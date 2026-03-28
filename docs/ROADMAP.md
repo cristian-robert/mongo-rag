@@ -8,7 +8,7 @@ Multi-tenant AI chatbot SaaS powered by RAG. Customers sign up, upload documents
 
 - **Next.js** — SaaS frontend, dashboard, marketing site
 - **FastAPI** — Python AI backend (RAG ingestion, retrieval, chat)
-- **Pydantic AI or LangChain** — RAG/agent orchestration (decision in #1)
+- **Pydantic AI** — RAG/agent orchestration (decided: lighter than LangChain, native Pydantic/FastAPI fit)
 - **MongoDB Atlas + Vector Search** — document storage and retrieval
 - **Stripe** — subscriptions and billing
 - **Embeddable widget** — lightweight JS bundle for customer websites
@@ -32,7 +32,23 @@ Multi-tenant AI chatbot SaaS powered by RAG. Customers sign up, upload documents
 - Authentication (NextAuth.js + API keys)
 - Dashboard, billing, widget
 - Conversation history, streaming SSE
+- Stable chunk IDs (SHA256-based) for idempotent upserts
+- Document version tracking and content hashing
+- Tiered LLM model strategy (cheap default, escalate on low confidence)
+- Versioned system prompt templates
+- RAG-specific metrics (latency breakdown, cost per request, retrieval quality)
+- Query rewriting and multi-query expansion (post-MVP)
 - Production deployment
+
+## Atlas Tier Strategy
+
+| Tier | Use | Storage | Cost | Notes |
+|---|---|---|---|---|
+| Free (M0) | Local dev, testing | 0.5GB, 100 ops/sec | $0 | Vector Search works but constrained |
+| Flex | MVP, early users | 5GB, 500 ops/sec | $8–30/mo | No private endpoints |
+| Dedicated M10+ | Production | Full features | ~$57/mo+ | Private endpoints, continuous backups, `$rankFusion` |
+
+M2/M5 and Serverless were sunset — plan around Free, Flex, or Dedicated only.
 
 ## Phases & Issues
 
@@ -102,7 +118,7 @@ Multi-tenant AI chatbot SaaS powered by RAG. Customers sign up, upload documents
 | # | Issue | Priority |
 |---|-------|----------|
 | 27 | Add conversation analytics and query insights dashboard | 🟢 Low |
-| 28 | Advanced RAG: cross-encoder reranking, inline citations, parameter tuning | 🟢 Low |
+| 28 | Advanced RAG: reranking, query rewriting, citations, parameter tuning | 🟢 Low |
 | 29 | Add team management and role-based access control | 🟢 Low |
 | 30 | Add webhook notifications and integration API | 🟢 Low |
 
