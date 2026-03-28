@@ -8,10 +8,31 @@ Multi-tenant AI chatbot SaaS powered by RAG. Customers sign up, upload documents
 
 - **Next.js** — SaaS frontend, dashboard, marketing site
 - **FastAPI** — Python AI backend (RAG ingestion, retrieval, chat)
-- **LangChain** — RAG orchestration
+- **Pydantic AI or LangChain** — RAG/agent orchestration (decision in #1)
 - **MongoDB Atlas + Vector Search** — document storage and retrieval
 - **Stripe** — subscriptions and billing
 - **Embeddable widget** — lightweight JS bundle for customer websites
+
+## Reference Implementation
+
+**[coleam00/MongoDB-RAG-Agent](https://github.com/coleam00/MongoDB-RAG-Agent)** — a working RAG agent that we adapt and extend rather than building from scratch.
+
+### What we reuse:
+| Component | Source File | Value |
+|---|---|---|
+| Hybrid RRF search | `src/tools.py` | Concurrent vector + text search with Reciprocal Rank Fusion |
+| Document ingestion | `src/ingestion/` | Docling HybridChunker + batch embedder (PDF, Word, PPT, Excel, HTML, MD) |
+| Pluggable providers | `src/providers.py` | OpenAI, OpenRouter, Ollama, Gemini support |
+| Agent pattern | `src/agent.py` | Pydantic AI agent with tool calling |
+| MongoDB schema | Collections | `documents` + `chunks` with vector + text indexes |
+
+### What we build on top:
+- Multi-tenant isolation (`tenant_id` on every query)
+- FastAPI HTTP API (reference repo is CLI-only)
+- Authentication (NextAuth.js + API keys)
+- Dashboard, billing, widget
+- Conversation history, streaming SSE
+- Production deployment
 
 ## Phases & Issues
 
@@ -81,7 +102,7 @@ Multi-tenant AI chatbot SaaS powered by RAG. Customers sign up, upload documents
 | # | Issue | Priority |
 |---|-------|----------|
 | 27 | Add conversation analytics and query insights dashboard | 🟢 Low |
-| 28 | Implement advanced RAG features: hybrid search, reranking, and citations | 🟢 Low |
+| 28 | Advanced RAG: cross-encoder reranking, inline citations, parameter tuning | 🟢 Low |
 | 29 | Add team management and role-based access control | 🟢 Low |
 | 30 | Add webhook notifications and integration API | 🟢 Low |
 
