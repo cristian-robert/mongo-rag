@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import pathlib
 import shutil
 import uuid
 from typing import Optional
@@ -89,7 +90,9 @@ async def ingest_document_endpoint(
     Returns 202 Accepted immediately with document_id and task_id.
     """
     ext = _validate_file(file, settings)
-    source = file.filename or f"upload-{uuid.uuid4()}{ext}"
+    # Sanitize filename to prevent path traversal
+    safe_name = pathlib.Path(file.filename or "unknown").name if file.filename else ""
+    source = safe_name or f"upload-{uuid.uuid4()}{ext}"
 
     meta: dict = {}
     if metadata:

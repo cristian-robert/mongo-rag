@@ -11,7 +11,7 @@ async def test_create_pending_document():
     from src.services.ingestion.service import IngestionService
 
     mock_docs = MagicMock()
-    mock_docs.insert_one = AsyncMock(return_value=MagicMock(inserted_id="doc-123"))
+    mock_docs.insert_one = AsyncMock()
 
     service = IngestionService(documents_collection=mock_docs, chunks_collection=MagicMock())
     doc_id = await service.create_pending_document(
@@ -20,8 +20,10 @@ async def test_create_pending_document():
         source="test.pdf",
     )
 
-    assert doc_id == "doc-123"
+    assert isinstance(doc_id, str)
+    assert len(doc_id) == 36  # UUID format
     call_args = mock_docs.insert_one.call_args[0][0]
+    assert call_args["_id"] == doc_id
     assert call_args["tenant_id"] == "tenant-1"
     assert call_args["status"] == "pending"
 

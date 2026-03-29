@@ -88,9 +88,10 @@ async def chat_websocket(
 
     Tenant ID is passed as query parameter: /api/v1/chat/ws?tenant_id=...
     """
-    if not tenant_id:
+    if not tenant_id or not tenant_id.strip():
         await websocket.close(code=4001, reason="tenant_id query parameter required")
         return
+    tenant_id = tenant_id.strip()
 
     await websocket.accept()
     service = _get_chat_service()

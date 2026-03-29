@@ -1,6 +1,7 @@
 """Tenant-aware ingestion service for API and Celery use."""
 
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -42,7 +43,9 @@ class IngestionService:
             Inserted document ID as string.
         """
         now = datetime.now(timezone.utc)
+        doc_id = str(uuid.uuid4())
         doc = {
+            "_id": doc_id,
             "tenant_id": tenant_id,
             "title": title,
             "source": source,
@@ -55,8 +58,8 @@ class IngestionService:
             "created_at": now,
             "updated_at": now,
         }
-        result = await self.documents.insert_one(doc)
-        return result.inserted_id
+        await self.documents.insert_one(doc)
+        return doc_id
 
     async def update_status(
         self,

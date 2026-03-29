@@ -1,6 +1,6 @@
 """Request and response models for API endpoints."""
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -33,7 +33,9 @@ class ChatRequest(BaseModel):
 
     message: str = Field(..., min_length=1, max_length=10000, description="User message")
     conversation_id: Optional[str] = Field(default=None, description="Existing conversation ID")
-    search_type: str = Field(default="hybrid", description="Search type: semantic, text, hybrid")
+    search_type: Literal["semantic", "text", "hybrid"] = Field(
+        default="hybrid", description="Search type: semantic, text, hybrid"
+    )
 
 
 class SourceReference(BaseModel):

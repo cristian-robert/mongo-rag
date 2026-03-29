@@ -83,8 +83,10 @@ class ConversationService:
         Returns:
             List of message dicts (most recent last), empty if not found.
         """
-        conv = await self.collection.find_one({"_id": conversation_id, "tenant_id": tenant_id})
+        conv = await self.collection.find_one(
+            {"_id": conversation_id, "tenant_id": tenant_id},
+            projection={"messages": {"$slice": -limit}},
+        )
         if not conv:
             return []
-        messages = conv.get("messages", [])
-        return messages[-limit:]
+        return conv.get("messages", [])
