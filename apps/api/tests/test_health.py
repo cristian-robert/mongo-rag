@@ -1,6 +1,6 @@
 """Tests for health check endpoint."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,13 +9,14 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """Create test client with mocked dependencies."""
-    with patch("src.main._deps") as mock_deps:
-        mock_deps.initialize = AsyncMock()
-        mock_deps.cleanup = AsyncMock()
-        from src.main import app
+    from src.main import app
 
-        with TestClient(app) as c:
-            yield c
+    mock_deps = MagicMock()
+    mock_deps.initialize = AsyncMock()
+    mock_deps.cleanup = AsyncMock()
+    with TestClient(app) as c:
+        app.state.deps = mock_deps  # Override after lifespan runs
+        yield c
 
 
 @pytest.mark.unit

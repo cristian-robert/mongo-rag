@@ -7,6 +7,7 @@ from pydantic_ai import Agent
 from src.core.dependencies import AgentDependencies
 from src.core.prompts import build_system_prompt
 from src.core.providers import get_llm_model
+from src.models.search import SearchResult
 from src.services.search import hybrid_search, semantic_search, text_search
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ async def run_search(
     tenant_id: str,
     search_type: str = "hybrid",
     match_count: int = 5,
-) -> list:
+) -> list[SearchResult]:
     """Run tenant-filtered search using the specified search type.
 
     Args:
@@ -45,23 +46,15 @@ async def run_search(
     Returns:
         List of SearchResult objects.
     """
-
-    # Create a lightweight context wrapper for search functions
-    class DepsContext:
-        def __init__(self, d: AgentDependencies):
-            self.deps = d
-
-    ctx = DepsContext(deps)
-
     if search_type == "semantic":
-        return await semantic_search(ctx, query, tenant_id, match_count)
+        return await semantic_search(deps, query, tenant_id, match_count)
     elif search_type == "text":
-        return await text_search(ctx, query, tenant_id, match_count)
+        return await text_search(deps, query, tenant_id, match_count)
     else:
-        return await hybrid_search(ctx, query, tenant_id, match_count)
+        return await hybrid_search(deps, query, tenant_id, match_count)
 
 
-def format_search_context(results: list) -> str:
+def format_search_context(results: list[SearchResult]) -> str:
     """Format search results into context string for the LLM prompt.
 
     Args:

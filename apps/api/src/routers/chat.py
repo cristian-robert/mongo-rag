@@ -7,6 +7,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 
+from src.core.dependencies import AgentDependencies
+from src.core.deps import get_deps
 from src.core.tenant import get_tenant_id
 from src.models.api import ChatRequest, ChatResponse, WSMessage
 from src.services.chat import ChatService
@@ -16,18 +18,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["chat"])
 
 
-def _get_chat_service() -> ChatService:
-    """Get ChatService with app-level deps."""
-    from src.main import _deps
-
-    return ChatService(_deps)
-
-
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(
     body: ChatRequest,
     request: Request,
     tenant_id: str = Depends(get_tenant_id),
+    deps: AgentDependencies = Depends(get_deps),
 ):
     """Handle a chat message.
 
@@ -35,7 +31,7 @@ async def chat_endpoint(
     Otherwise returns the full response as JSON.
     """
     accept = request.headers.get("accept", "")
-    service = _get_chat_service()
+    service = ChatService(deps)
 
     # SSE streaming path
     if "text/event-stream" in accept:
@@ -94,7 +90,9 @@ async def chat_websocket(
     tenant_id = tenant_id.strip()
 
     await websocket.accept()
-    service = _get_chat_service()
+    # Access deps from app state directly (WebSocket can't use Depends)
+    deps: AgentDependencies = websocket.app.state.deps
+    service = ChatService(deps)
 
     try:
         while True:
@@ -104,9 +102,8 @@ async def chat_websocket(
                 data = json.loads(raw)
                 msg = WSMessage(**data)
             except (json.JSONDecodeError, Exception) as e:
-                await websocket.send_json(
-                    {"type": "error", "message": f"Invalid message format: {str(e)}"}
-                )
+                logger.warning("WebSocket invalid message: %s", str(e))
+                await websocket.send_json({"type": "error", "message": "Invalid message format"})
                 continue
 
             if msg.type == "cancel":
@@ -123,7 +120,9 @@ async def chat_websocket(
                         await websocket.send_json(event)
                 except Exception as e:
                     logger.exception("WebSocket chat error: %s", str(e))
-                    await websocket.send_json({"type": "error", "message": f"Chat error: {str(e)}"})
+                    await websocket.send_json(
+                        {"type": "error", "message": "An internal error occurred"}
+                    )
             else:
                 await websocket.send_json(
                     {"type": "error", "message": "Expected type 'message' with content"}

@@ -11,19 +11,20 @@ MOCK_TENANT_ID = "test-tenant-001"
 @pytest.fixture
 def app_client():
     """Create test client with mocked deps."""
-    with patch("src.main._deps") as mock_deps:
-        mock_deps.initialize = AsyncMock()
-        mock_deps.cleanup = AsyncMock()
-        mock_deps.db = MagicMock()
-        mock_deps.settings = MagicMock()
-        mock_deps.conversations_collection = MagicMock()
-        mock_deps.documents_collection = MagicMock()
-        mock_deps.chunks_collection = MagicMock()
+    from src.main import app
 
-        from src.main import app
+    mock_deps = MagicMock()
+    mock_deps.initialize = AsyncMock()
+    mock_deps.cleanup = AsyncMock()
+    mock_deps.db = MagicMock()
+    mock_deps.settings = MagicMock()
+    mock_deps.conversations_collection = MagicMock()
+    mock_deps.documents_collection = MagicMock()
+    mock_deps.chunks_collection = MagicMock()
 
-        with TestClient(app) as c:
-            yield c, mock_deps
+    with TestClient(app) as c:
+        app.state.deps = mock_deps  # Override after lifespan runs
+        yield c, mock_deps
 
 
 @pytest.mark.unit

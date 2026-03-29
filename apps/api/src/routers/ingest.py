@@ -10,6 +10,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from src.core.dependencies import AgentDependencies
+from src.core.deps import get_deps
 from src.core.settings import Settings, load_settings
 from src.core.tenant import get_tenant_id
 from src.models.api import DocumentStatusResponse, IngestResponse
@@ -81,6 +83,7 @@ async def ingest_document_endpoint(
     metadata: Optional[str] = Form(default=None),
     tenant_id: str = Depends(get_tenant_id),
     settings: Settings = Depends(_get_settings),
+    deps: AgentDependencies = Depends(get_deps),
 ) -> IngestResponse:
     """Upload and ingest a document.
 
@@ -101,11 +104,9 @@ async def ingest_document_endpoint(
         except json.JSONDecodeError:
             raise HTTPException(status_code=422, detail="Invalid metadata JSON")
 
-    from src.main import _deps
-
     service = IngestionService(
-        documents_collection=_deps.documents_collection,
-        chunks_collection=_deps.chunks_collection,
+        documents_collection=deps.documents_collection,
+        chunks_collection=deps.chunks_collection,
     )
 
     document_id = await service.create_pending_document(
@@ -122,14 +123,30 @@ async def ingest_document_endpoint(
     with open(temp_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
-    task = ingest_document.delay(
-        temp_path=temp_path,
-        document_id=str(document_id),
-        tenant_id=tenant_id,
-        title=title or os.path.splitext(source)[0],
-        source=source,
-        metadata=meta,
-    )
+    # Verify actual file size (Content-Length may be missing or spoofed)
+    actual_size = os.path.getsize(temp_path)
+    max_bytes = settings.max_upload_size_mb * 1024 * 1024
+    if actual_size > max_bytes:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size: {settings.max_upload_size_mb}MB",
+        )
+
+    try:
+        task = ingest_document.delay(
+            temp_path=temp_path,
+            document_id=str(document_id),
+            tenant_id=tenant_id,
+            title=title or os.path.splitext(source)[0],
+            source=source,
+            metadata=meta,
+        )
+    except Exception:
+        # Clean up temp file if Celery dispatch fails
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        logger.exception("Failed to dispatch ingestion task for doc=%s", document_id)
+        raise HTTPException(status_code=503, detail="Task queue unavailable")
 
     logger.info(
         "Ingestion dispatched: doc=%s, tenant=%s, task=%s",
@@ -149,17 +166,16 @@ async def ingest_document_endpoint(
 async def get_document_status(
     document_id: str,
     tenant_id: str = Depends(get_tenant_id),
+    deps: AgentDependencies = Depends(get_deps),
 ) -> DocumentStatusResponse:
     """Get document processing status.
 
     Returns current status, chunk count, and version for the given document.
     Returns 404 if document not found or belongs to a different tenant.
     """
-    from src.main import _deps
-
     service = IngestionService(
-        documents_collection=_deps.documents_collection,
-        chunks_collection=_deps.chunks_collection,
+        documents_collection=deps.documents_collection,
+        chunks_collection=deps.chunks_collection,
     )
 
     doc = await service.get_document_status(document_id, tenant_id)

@@ -12,24 +12,25 @@ MOCK_TENANT_ID = "test-tenant-001"
 @pytest.fixture
 def app_client():
     """Create test client with mocked Celery and MongoDB."""
-    with patch("src.main._deps") as mock_deps:
-        mock_deps.initialize = AsyncMock()
-        mock_deps.cleanup = AsyncMock()
-        mock_deps.db = MagicMock()
-        mock_deps.settings = MagicMock()
-        mock_deps.settings.max_upload_size_mb = 50
-        mock_deps.settings.upload_temp_dir = "/tmp/test-uploads"
-        mock_deps.documents_collection = MagicMock()
-        mock_deps.documents_collection.insert_one = AsyncMock(
-            return_value=MagicMock(inserted_id="doc-test-123")
-        )
-        mock_deps.documents_collection.find_one = AsyncMock(return_value=None)
-        mock_deps.chunks_collection = MagicMock()
+    from src.main import app
 
-        from src.main import app
+    mock_deps = MagicMock()
+    mock_deps.initialize = AsyncMock()
+    mock_deps.cleanup = AsyncMock()
+    mock_deps.db = MagicMock()
+    mock_deps.settings = MagicMock()
+    mock_deps.settings.max_upload_size_mb = 50
+    mock_deps.settings.upload_temp_dir = "/tmp/test-uploads"
+    mock_deps.documents_collection = MagicMock()
+    mock_deps.documents_collection.insert_one = AsyncMock(
+        return_value=MagicMock(inserted_id="doc-test-123")
+    )
+    mock_deps.documents_collection.find_one = AsyncMock(return_value=None)
+    mock_deps.chunks_collection = MagicMock()
 
-        with TestClient(app) as c:
-            yield c, mock_deps
+    with TestClient(app) as c:
+        app.state.deps = mock_deps  # Override after lifespan runs
+        yield c, mock_deps
 
 
 @pytest.mark.unit
@@ -68,6 +69,7 @@ def test_ingest_valid_file_returns_202(app_client):
         patch("os.makedirs"),
         patch("builtins.open", create=True),
         patch("shutil.copyfileobj"),
+        patch("os.path.getsize", return_value=1024),
     ):
         mock_task.delay.return_value = MagicMock(id="celery-task-123")
 

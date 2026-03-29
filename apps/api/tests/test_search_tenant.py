@@ -27,19 +27,18 @@ async def test_semantic_search_includes_tenant_filter():
 
     mock_collection.aggregate = capture_aggregate
 
-    ctx = MagicMock()
-    ctx.deps = MagicMock()
-    ctx.deps.settings = MagicMock()
-    ctx.deps.settings.default_match_count = 10
-    ctx.deps.settings.max_match_count = 50
-    ctx.deps.settings.mongodb_vector_index = "vector_index"
-    ctx.deps.settings.mongodb_collection_documents = "documents"
-    ctx.deps.settings.mongodb_collection_chunks = "chunks"
-    ctx.deps.get_embedding = AsyncMock(return_value=[0.1] * 1536)
-    ctx.deps.db = MagicMock()
-    ctx.deps.db.__getitem__ = MagicMock(return_value=mock_collection)
+    deps = MagicMock()
+    deps.settings = MagicMock()
+    deps.settings.default_match_count = 10
+    deps.settings.max_match_count = 50
+    deps.settings.mongodb_vector_index = "vector_index"
+    deps.settings.mongodb_collection_documents = "documents"
+    deps.settings.mongodb_collection_chunks = "chunks"
+    deps.get_embedding = AsyncMock(return_value=[0.1] * 1536)
+    deps.db = MagicMock()
+    deps.db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    await semantic_search(ctx, "test query", tenant_id="tenant-abc")
+    await semantic_search(deps, "test query", tenant_id="tenant-abc")
 
     assert len(captured_pipelines) == 1
     pipeline = captured_pipelines[0]
@@ -69,18 +68,17 @@ async def test_text_search_includes_tenant_filter():
 
     mock_collection.aggregate = capture_aggregate
 
-    ctx = MagicMock()
-    ctx.deps = MagicMock()
-    ctx.deps.settings = MagicMock()
-    ctx.deps.settings.default_match_count = 10
-    ctx.deps.settings.max_match_count = 50
-    ctx.deps.settings.mongodb_text_index = "text_index"
-    ctx.deps.settings.mongodb_collection_documents = "documents"
-    ctx.deps.settings.mongodb_collection_chunks = "chunks"
-    ctx.deps.db = MagicMock()
-    ctx.deps.db.__getitem__ = MagicMock(return_value=mock_collection)
+    deps = MagicMock()
+    deps.settings = MagicMock()
+    deps.settings.default_match_count = 10
+    deps.settings.max_match_count = 50
+    deps.settings.mongodb_text_index = "text_index"
+    deps.settings.mongodb_collection_documents = "documents"
+    deps.settings.mongodb_collection_chunks = "chunks"
+    deps.db = MagicMock()
+    deps.db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    await text_search(ctx, "test query", tenant_id="tenant-abc")
+    await text_search(deps, "test query", tenant_id="tenant-abc")
 
     assert len(captured_pipelines) == 1
     pipeline = captured_pipelines[0]
@@ -95,6 +93,6 @@ async def test_search_without_tenant_id_raises():
     """Search functions require tenant_id parameter."""
     from src.services.search import semantic_search
 
-    ctx = MagicMock()
+    deps = MagicMock()
     with pytest.raises(TypeError):
-        await semantic_search(ctx, "test query")  # Missing tenant_id
+        await semantic_search(deps, "test query")  # Missing tenant_id

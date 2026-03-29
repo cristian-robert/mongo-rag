@@ -1,6 +1,6 @@
 """Shared test fixtures."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,12 +23,12 @@ def mock_deps():
 
 @pytest.fixture
 def client(mock_deps):
-    """Create test client with mocked dependencies."""
-    with patch("src.main._deps", mock_deps):
-        from src.main import app
+    """Create test client with mocked dependencies via app.state."""
+    from src.main import app
 
-        with TestClient(app) as c:
-            yield c
+    with TestClient(app) as c:
+        app.state.deps = mock_deps  # Override after lifespan runs
+        yield c
 
 
 MOCK_TENANT_ID = "test-tenant-001"

@@ -183,12 +183,17 @@ def ingest_document(
 
         except Exception as e:
             task_logger.exception("Ingestion failed: doc=%s, error=%s", document_id, str(e))
+            # Sanitize error message — never persist raw exception strings
+            # which may contain connection strings or API keys
+            safe_error = type(e).__name__
+            if isinstance(e, (ValueError, TypeError, FileNotFoundError)):
+                safe_error = f"{type(e).__name__}: {str(e)}"
             try:
                 await service.update_status(
                     document_id,
                     tenant_id,
                     DocumentStatus.FAILED,
-                    error_message=str(e),
+                    error_message=safe_error,
                 )
             except Exception:
                 task_logger.exception("Failed to update status after error")
@@ -196,9 +201,12 @@ def ingest_document(
 
         finally:
             await client.close()
-            # Clean up temp file
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-                task_logger.info("Cleaned up temp file: %s", temp_path)
+            # Clean up temp file and its UUID parent directory
+            import shutil
+
+            temp_dir = os.path.dirname(temp_path)
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                task_logger.info("Cleaned up temp dir: %s", temp_dir)
 
     return asyncio.run(_run())

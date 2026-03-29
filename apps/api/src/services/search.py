@@ -4,7 +4,6 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 
-from pydantic_ai import RunContext
 from pymongo.errors import OperationFailure
 
 from src.core.dependencies import AgentDependencies
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 async def semantic_search(
-    ctx: RunContext[AgentDependencies],
+    deps: AgentDependencies,
     query: str,
     tenant_id: str,
     match_count: Optional[int] = None,
@@ -23,19 +22,15 @@ async def semantic_search(
     Perform pure semantic search using MongoDB vector similarity.
 
     Args:
-        ctx: Agent runtime context with dependencies
-        query: Search query text
-        match_count: Number of results to return (default: 10)
+        deps: Agent dependencies with DB connections.
+        query: Search query text.
+        tenant_id: Tenant ID for isolation.
+        match_count: Number of results to return (default: 10).
 
     Returns:
-        List of search results ordered by similarity
-
-    Raises:
-        OperationFailure: If MongoDB operation fails (e.g., missing index)
+        List of search results ordered by similarity.
     """
     try:
-        deps = ctx.deps
-
         # Use default if not specified
         if match_count is None:
             match_count = deps.settings.default_match_count
@@ -110,16 +105,20 @@ async def semantic_search(
 
     except OperationFailure as e:
         error_code = e.code if hasattr(e, "code") else None
-        logger.error(f"semantic_search_failed: query={query}, error={str(e)}, code={error_code}")
-        # Return empty list on error (graceful degradation)
+        logger.error(
+            "semantic_search_failed: query=%s, error=%s, code=%s",
+            query,
+            str(e),
+            error_code,
+        )
         return []
     except Exception as e:
-        logger.exception(f"semantic_search_error: query={query}, error={str(e)}")
+        logger.exception("semantic_search_error: query=%s, error=%s", query, str(e))
         return []
 
 
 async def text_search(
-    ctx: RunContext[AgentDependencies],
+    deps: AgentDependencies,
     query: str,
     tenant_id: str,
     match_count: Optional[int] = None,
@@ -131,19 +130,15 @@ async def text_search(
     Works on all Atlas tiers including M0 (free tier).
 
     Args:
-        ctx: Agent runtime context with dependencies
-        query: Search query text
-        match_count: Number of results to return (default: 10)
+        deps: Agent dependencies with DB connections.
+        query: Search query text.
+        tenant_id: Tenant ID for isolation.
+        match_count: Number of results to return (default: 10).
 
     Returns:
-        List of search results ordered by text relevance
-
-    Raises:
-        OperationFailure: If MongoDB operation fails (e.g., missing index)
+        List of search results ordered by text relevance.
     """
     try:
-        deps = ctx.deps
-
         # Use default if not specified
         if match_count is None:
             match_count = deps.settings.default_match_count
@@ -225,11 +220,10 @@ async def text_search(
 
     except OperationFailure as e:
         error_code = e.code if hasattr(e, "code") else None
-        logger.error(f"text_search_failed: query={query}, error={str(e)}, code={error_code}")
-        # Return empty list on error (graceful degradation)
+        logger.error("text_search_failed: query=%s, error=%s, code=%s", query, str(e), error_code)
         return []
     except Exception as e:
-        logger.exception(f"text_search_error: query={query}, error={str(e)}")
+        logger.exception("text_search_error: query=%s, error=%s", query, str(e))
         return []
 
 
@@ -307,7 +301,7 @@ def reciprocal_rank_fusion(
 
 
 async def hybrid_search(
-    ctx: RunContext[AgentDependencies],
+    deps: AgentDependencies,
     query: str,
     tenant_id: str,
     match_count: Optional[int] = None,
@@ -320,23 +314,16 @@ async def hybrid_search(
     Works on all Atlas tiers including M0 (free tier) - no M10+ required!
 
     Args:
-        ctx: Agent runtime context with dependencies
-        query: Search query text
-        match_count: Number of results to return (default: 10)
-        text_weight: Weight for text matching (0-1, not used with RRF)
+        deps: Agent dependencies with DB connections.
+        query: Search query text.
+        tenant_id: Tenant ID for isolation.
+        match_count: Number of results to return (default: 10).
+        text_weight: Weight for text matching (0-1, not used with RRF).
 
     Returns:
-        List of search results sorted by combined RRF score
-
-    Algorithm:
-        1. Run semantic search (vector similarity)
-        2. Run text search (keyword/fuzzy matching)
-        3. Merge results using Reciprocal Rank Fusion
-        4. Return top N results by combined score
+        List of search results sorted by combined RRF score.
     """
     try:
-        deps = ctx.deps
-
         # Use defaults if not specified
         if match_count is None:
             match_count = deps.settings.default_match_count
@@ -347,21 +334,21 @@ async def hybrid_search(
         # Over-fetch for better RRF results (2x requested count)
         fetch_count = match_count * 2
 
-        logger.info(f"hybrid_search starting: query='{query}', match_count={match_count}")
+        logger.info("hybrid_search starting: query='%s', match_count=%d", query, match_count)
 
         # Run both searches concurrently for performance
         semantic_results, text_results = await asyncio.gather(
-            semantic_search(ctx, query, tenant_id, fetch_count),
-            text_search(ctx, query, tenant_id, fetch_count),
+            semantic_search(deps, query, tenant_id, fetch_count),
+            text_search(deps, query, tenant_id, fetch_count),
             return_exceptions=True,  # Don't fail if one search errors
         )
 
         # Handle errors gracefully
         if isinstance(semantic_results, Exception):
-            logger.warning(f"Semantic search failed: {semantic_results}, using text results only")
+            logger.warning("Semantic search failed: %s, using text results only", semantic_results)
             semantic_results = []
         if isinstance(text_results, Exception):
-            logger.warning(f"Text search failed: {text_results}, using semantic results only")
+            logger.warning("Text search failed: %s, using semantic results only", text_results)
             text_results = []
 
         # If both failed, return empty
@@ -379,18 +366,21 @@ async def hybrid_search(
         final_results = merged_results[:match_count]
 
         logger.info(
-            f"hybrid_search_completed: query='{query}', "
-            f"semantic={len(semantic_results)}, text={len(text_results)}, "
-            f"merged={len(merged_results)}, returned={len(final_results)}"
+            "hybrid_search_completed: query='%s', semantic=%d, text=%d, merged=%d, returned=%d",
+            query,
+            len(semantic_results),
+            len(text_results),
+            len(merged_results),
+            len(final_results),
         )
 
         return final_results
 
     except Exception as e:
-        logger.exception(f"hybrid_search_error: query={query}, error={str(e)}")
+        logger.exception("hybrid_search_error: query=%s, error=%s", query, str(e))
         # Graceful degradation: try semantic-only as last resort
         try:
             logger.info("Falling back to semantic search only")
-            return await semantic_search(ctx, query, tenant_id, match_count)
+            return await semantic_search(deps, query, tenant_id, match_count)
         except Exception:
             return []
