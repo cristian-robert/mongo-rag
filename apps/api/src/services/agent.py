@@ -1,84 +1,84 @@
-"""Main MongoDB RAG agent implementation with shared state."""
+"""RAG agent with tenant-aware search."""
 
+import logging
 from typing import Optional
 
-from pydantic import BaseModel
-from pydantic_ai import Agent, RunContext
-from pydantic_ai.ag_ui import StateDeps
+from pydantic_ai import Agent
 
 from src.core.dependencies import AgentDependencies
-from src.core.prompts import MAIN_SYSTEM_PROMPT
+from src.core.prompts import build_system_prompt
 from src.core.providers import get_llm_model
 from src.services.search import hybrid_search, semantic_search, text_search
 
-
-class RAGState(BaseModel):
-    """Minimal shared state for the RAG agent."""
-
-    pass
+logger = logging.getLogger(__name__)
 
 
-# Create the RAG agent with AGUI support
-rag_agent = Agent(get_llm_model(), deps_type=StateDeps[RAGState], system_prompt=MAIN_SYSTEM_PROMPT)
-
-
-@rag_agent.tool
-async def search_knowledge_base(
-    ctx: RunContext[StateDeps[RAGState]],
-    query: str,
-    match_count: Optional[int] = 5,
-    search_type: Optional[str] = "hybrid",
-) -> str:
-    """
-    Search the knowledge base for relevant information.
+def create_rag_agent(product_name: str = "this product") -> Agent:
+    """Create a RAG agent with a tenant-customized system prompt.
 
     Args:
-        ctx: Agent runtime context with state dependencies
-        query: Search query text
-        match_count: Number of results to return (default: 5)
-        search_type: Type of search - "semantic" or "text" or "hybrid" (default: hybrid)
+        product_name: Tenant's product name for prompt personalization.
 
     Returns:
-        String containing the retrieved information formatted for the LLM
+        Configured Pydantic AI Agent.
     """
-    try:
-        # Initialize database connection
-        agent_deps = AgentDependencies()
-        await agent_deps.initialize()
+    system_prompt = build_system_prompt(product_name)
+    agent = Agent(get_llm_model(), system_prompt=system_prompt)
+    return agent
 
-        # Create a context wrapper for the search tools
-        class DepsWrapper:
-            def __init__(self, deps):
-                self.deps = deps
 
-        deps_ctx = DepsWrapper(agent_deps)
+async def run_search(
+    deps: AgentDependencies,
+    query: str,
+    tenant_id: str,
+    search_type: str = "hybrid",
+    match_count: int = 5,
+) -> list:
+    """Run tenant-filtered search using the specified search type.
 
-        # Perform the search based on type
-        if search_type == "hybrid":
-            results = await hybrid_search(ctx=deps_ctx, query=query, match_count=match_count)
-        elif search_type == "semantic":
-            results = await semantic_search(ctx=deps_ctx, query=query, match_count=match_count)
-        else:
-            results = await text_search(ctx=deps_ctx, query=query, match_count=match_count)
+    Args:
+        deps: Initialized AgentDependencies with DB connections.
+        query: User's search query.
+        tenant_id: Tenant ID for isolation.
+        search_type: One of "semantic", "text", "hybrid".
+        match_count: Number of results to return.
 
-        # Clean up
-        await agent_deps.cleanup()
+    Returns:
+        List of SearchResult objects.
+    """
+    # Create a lightweight context wrapper for search functions
+    class DepsContext:
+        def __init__(self, d: AgentDependencies):
+            self.deps = d
 
-        # Format results as a simple string
-        if not results:
-            return "No relevant information found in the knowledge base."
+    ctx = DepsContext(deps)
 
-        # Build a formatted response
-        response_parts = [f"Found {len(results)} relevant documents:\n"]
+    if search_type == "semantic":
+        return await semantic_search(ctx, query, tenant_id, match_count)
+    elif search_type == "text":
+        return await text_search(ctx, query, tenant_id, match_count)
+    else:
+        return await hybrid_search(ctx, query, tenant_id, match_count)
 
-        for i, result in enumerate(results, 1):
-            response_parts.append(
-                f"\n--- Document {i}: {result.document_title} "
-                f"(relevance: {result.similarity:.2f}) ---"
-            )
-            response_parts.append(result.content)
 
-        return "\n".join(response_parts)
+def format_search_context(results: list) -> str:
+    """Format search results into context string for the LLM prompt.
 
-    except Exception as e:
-        return f"Error searching knowledge base: {str(e)}"
+    Args:
+        results: List of SearchResult objects.
+
+    Returns:
+        Formatted string with numbered source snippets.
+    """
+    if not results:
+        return "No relevant documents found in the knowledge base."
+
+    parts = []
+    for i, result in enumerate(results, 1):
+        heading = ""
+        if result.metadata.get("heading_path"):
+            heading = " > ".join(result.metadata["heading_path"]) + "\n"
+        parts.append(
+            f"[Source {i}: {result.document_title}]\n{heading}{result.content}"
+        )
+    return "\n\n---\n\n".join(parts)
