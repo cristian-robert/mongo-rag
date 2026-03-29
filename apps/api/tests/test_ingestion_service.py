@@ -11,9 +11,7 @@ async def test_create_pending_document():
     from src.services.ingestion.service import IngestionService
 
     mock_docs = MagicMock()
-    mock_docs.insert_one = AsyncMock(
-        return_value=MagicMock(inserted_id="doc-123")
-    )
+    mock_docs.insert_one = AsyncMock(return_value=MagicMock(inserted_id="doc-123"))
 
     service = IngestionService(documents_collection=mock_docs, chunks_collection=MagicMock())
     doc_id = await service.create_pending_document(
@@ -50,9 +48,7 @@ async def test_check_duplicate_returns_existing():
     from src.services.ingestion.service import IngestionService
 
     mock_docs = MagicMock()
-    mock_docs.find_one = AsyncMock(
-        return_value={"_id": "existing-doc", "status": "ready"}
-    )
+    mock_docs.find_one = AsyncMock(return_value={"_id": "existing-doc", "status": "ready"})
 
     service = IngestionService(documents_collection=mock_docs, chunks_collection=MagicMock())
     result = await service.check_duplicate("tenant-1", "test.pdf", "abc123hash")

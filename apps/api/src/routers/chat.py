@@ -19,6 +19,7 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
 def _get_chat_service() -> ChatService:
     """Get ChatService with app-level deps."""
     from src.main import _deps
+
     return ChatService(_deps)
 
 
@@ -38,6 +39,7 @@ async def chat_endpoint(
 
     # SSE streaming path
     if "text/event-stream" in accept:
+
         async def event_generator():
             async for event in service.handle_message_stream(
                 message=body.message,
@@ -120,9 +122,7 @@ async def chat_websocket(
                         await websocket.send_json(event)
                 except Exception as e:
                     logger.exception("WebSocket chat error: %s", str(e))
-                    await websocket.send_json(
-                        {"type": "error", "message": f"Chat error: {str(e)}"}
-                    )
+                    await websocket.send_json({"type": "error", "message": f"Chat error: {str(e)}"})
             else:
                 await websocket.send_json(
                     {"type": "error", "message": "Expected type 'message' with content"}

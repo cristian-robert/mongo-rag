@@ -52,9 +52,7 @@ class ChatService:
         await self.conversation_service.append_message(conv_id, tenant_id, user_msg)
 
         # Run search
-        results = await run_search(
-            self.deps, message, tenant_id, search_type=search_type
-        )
+        results = await run_search(self.deps, message, tenant_id, search_type=search_type)
 
         # Build context
         context = format_search_context(results)
@@ -82,7 +80,7 @@ class ChatService:
         agent = create_rag_agent()
         result = await agent.run(user_prompt)
 
-        answer = result.output if hasattr(result, 'output') else str(result.data)
+        answer = result.output if hasattr(result, "output") else str(result.data)
 
         # Extract sources
         sources = [
@@ -141,9 +139,7 @@ class ChatService:
         await self.conversation_service.append_message(conv_id, tenant_id, user_msg)
 
         # Run search
-        results = await run_search(
-            self.deps, message, tenant_id, search_type=search_type
-        )
+        results = await run_search(self.deps, message, tenant_id, search_type=search_type)
 
         # Build context
         context = format_search_context(results)

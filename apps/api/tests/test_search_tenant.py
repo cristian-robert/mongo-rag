@@ -4,8 +4,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.models.search import SearchResult
-
 
 @pytest.mark.unit
 async def test_semantic_search_includes_tenant_filter():
@@ -41,7 +39,7 @@ async def test_semantic_search_includes_tenant_filter():
     ctx.deps.db = MagicMock()
     ctx.deps.db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    results = await semantic_search(ctx, "test query", tenant_id="tenant-abc")
+    await semantic_search(ctx, "test query", tenant_id="tenant-abc")
 
     assert len(captured_pipelines) == 1
     pipeline = captured_pipelines[0]
@@ -82,17 +80,14 @@ async def test_text_search_includes_tenant_filter():
     ctx.deps.db = MagicMock()
     ctx.deps.db.__getitem__ = MagicMock(return_value=mock_collection)
 
-    results = await text_search(ctx, "test query", tenant_id="tenant-abc")
+    await text_search(ctx, "test query", tenant_id="tenant-abc")
 
     assert len(captured_pipelines) == 1
     pipeline = captured_pipelines[0]
     search_stage = pipeline[0]["$search"]
     assert "compound" in search_stage
     filter_clause = search_stage["compound"]["filter"]
-    assert any(
-        f.get("equals", {}).get("value") == "tenant-abc"
-        for f in filter_clause
-    )
+    assert any(f.get("equals", {}).get("value") == "tenant-abc" for f in filter_clause)
 
 
 @pytest.mark.unit

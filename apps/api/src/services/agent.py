@@ -1,7 +1,6 @@
 """RAG agent with tenant-aware search."""
 
 import logging
-from typing import Optional
 
 from pydantic_ai import Agent
 
@@ -46,6 +45,7 @@ async def run_search(
     Returns:
         List of SearchResult objects.
     """
+
     # Create a lightweight context wrapper for search functions
     class DepsContext:
         def __init__(self, d: AgentDependencies):
@@ -78,7 +78,5 @@ def format_search_context(results: list) -> str:
         heading = ""
         if result.metadata.get("heading_path"):
             heading = " > ".join(result.metadata["heading_path"]) + "\n"
-        parts.append(
-            f"[Source {i}: {result.document_title}]\n{heading}{result.content}"
-        )
+        parts.append(f"[Source {i}: {result.document_title}]\n{heading}{result.content}")
     return "\n\n---\n\n".join(parts)

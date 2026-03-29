@@ -13,9 +13,7 @@ async def test_get_or_create_new_conversation():
     from src.services.conversation import ConversationService
 
     mock_collection = MagicMock()
-    mock_collection.insert_one = AsyncMock(
-        return_value=MagicMock(inserted_id="new-conv-id")
-    )
+    mock_collection.insert_one = AsyncMock(return_value=MagicMock(inserted_id="new-conv-id"))
 
     service = ConversationService(mock_collection)
     conv = await service.get_or_create("tenant-1", conversation_id=None)

@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 async def semantic_search(
-    ctx: RunContext[AgentDependencies], query: str, tenant_id: str, match_count: Optional[int] = None
+    ctx: RunContext[AgentDependencies],
+    query: str,
+    tenant_id: str,
+    match_count: Optional[int] = None,
 ) -> List[SearchResult]:
     """
     Perform pure semantic search using MongoDB vector similarity.
@@ -116,7 +119,10 @@ async def semantic_search(
 
 
 async def text_search(
-    ctx: RunContext[AgentDependencies], query: str, tenant_id: str, match_count: Optional[int] = None
+    ctx: RunContext[AgentDependencies],
+    query: str,
+    tenant_id: str,
+    match_count: Optional[int] = None,
 ) -> List[SearchResult]:
     """
     Perform full-text search using MongoDB Atlas Search.
@@ -160,9 +166,7 @@ async def text_search(
                                 }
                             }
                         ],
-                        "filter": [
-                            {"equals": {"path": "tenant_id", "value": tenant_id}}
-                        ],
+                        "filter": [{"equals": {"path": "tenant_id", "value": tenant_id}}],
                     },
                 }
             },

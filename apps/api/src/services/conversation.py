@@ -34,9 +34,7 @@ class ConversationService:
             but not found for this tenant (cross-tenant access attempt).
         """
         if conversation_id:
-            conv = await self.collection.find_one(
-                {"_id": conversation_id, "tenant_id": tenant_id}
-            )
+            conv = await self.collection.find_one({"_id": conversation_id, "tenant_id": tenant_id})
             if conv is None:
                 return None
             return conv
@@ -85,9 +83,7 @@ class ConversationService:
         Returns:
             List of message dicts (most recent last), empty if not found.
         """
-        conv = await self.collection.find_one(
-            {"_id": conversation_id, "tenant_id": tenant_id}
-        )
+        conv = await self.collection.find_one({"_id": conversation_id, "tenant_id": tenant_id})
         if not conv:
             return []
         messages = conv.get("messages", [])

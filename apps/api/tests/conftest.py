@@ -26,6 +26,7 @@ def client(mock_deps):
     """Create test client with mocked dependencies."""
     with patch("src.main._deps", mock_deps):
         from src.main import app
+
         with TestClient(app) as c:
             yield c
 

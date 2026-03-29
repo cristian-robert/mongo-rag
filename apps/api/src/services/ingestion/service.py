@@ -131,9 +131,7 @@ class IngestionService:
             return existing["_id"]
         return None
 
-    async def get_latest_version(
-        self, tenant_id: str, source: str
-    ) -> int:
+    async def get_latest_version(self, tenant_id: str, source: str) -> int:
         """Get the latest version number for a document source.
 
         Args:
@@ -174,9 +172,7 @@ class IngestionService:
             Number of chunks inserted.
         """
         # Delete existing chunks for this document
-        await self.chunks.delete_many(
-            {"document_id": document_id, "tenant_id": tenant_id}
-        )
+        await self.chunks.delete_many({"document_id": document_id, "tenant_id": tenant_id})
 
         if not chunks:
             return 0

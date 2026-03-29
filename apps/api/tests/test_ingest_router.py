@@ -27,6 +27,7 @@ def app_client():
         mock_deps.chunks_collection = MagicMock()
 
         from src.main import app
+
         with TestClient(app) as c:
             yield c, mock_deps
 
@@ -61,12 +62,13 @@ def test_ingest_valid_file_returns_202(app_client):
     """Ingest with valid file returns 202 Accepted."""
     client, mock_deps = app_client
 
-    with patch("src.routers.ingest.ingest_document") as mock_task, \
-         patch("src.routers.ingest.IngestionService") as mock_service_cls, \
-         patch("os.makedirs"), \
-         patch("builtins.open", create=True), \
-         patch("shutil.copyfileobj"):
-
+    with (
+        patch("src.routers.ingest.ingest_document") as mock_task,
+        patch("src.routers.ingest.IngestionService") as mock_service_cls,
+        patch("os.makedirs"),
+        patch("builtins.open", create=True),
+        patch("shutil.copyfileobj"),
+    ):
         mock_task.delay.return_value = MagicMock(id="celery-task-123")
 
         mock_service = MagicMock()
@@ -94,13 +96,15 @@ def test_document_status_returns_status(app_client):
 
     with patch("src.routers.ingest.IngestionService") as mock_service_cls:
         mock_service = MagicMock()
-        mock_service.get_document_status = AsyncMock(return_value={
-            "_id": "doc-123",
-            "status": "ready",
-            "chunk_count": 42,
-            "version": 1,
-            "title": "Test Doc",
-        })
+        mock_service.get_document_status = AsyncMock(
+            return_value={
+                "_id": "doc-123",
+                "status": "ready",
+                "chunk_count": 42,
+                "version": 1,
+                "title": "Test Doc",
+            }
+        )
         mock_service_cls.return_value = mock_service
 
         response = client.get(

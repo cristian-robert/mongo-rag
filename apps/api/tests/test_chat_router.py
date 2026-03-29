@@ -21,6 +21,7 @@ def app_client():
         mock_deps.chunks_collection = MagicMock()
 
         from src.main import app
+
         with TestClient(app) as c:
             yield c, mock_deps
 

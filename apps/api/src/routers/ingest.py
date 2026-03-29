@@ -20,8 +20,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
 SUPPORTED_EXTENSIONS = {
-    ".pdf", ".txt", ".md", ".markdown", ".docx", ".doc",
-    ".pptx", ".ppt", ".xlsx", ".xls", ".html", ".htm",
+    ".pdf",
+    ".txt",
+    ".md",
+    ".markdown",
+    ".docx",
+    ".doc",
+    ".pptx",
+    ".ppt",
+    ".xlsx",
+    ".xls",
+    ".html",
+    ".htm",
 }
 
 
@@ -120,7 +130,9 @@ async def ingest_document_endpoint(
 
     logger.info(
         "Ingestion dispatched: doc=%s, tenant=%s, task=%s",
-        document_id, tenant_id, task.id,
+        document_id,
+        tenant_id,
+        task.id,
     )
 
     return IngestResponse(
