@@ -96,7 +96,7 @@ mongo-rag/
 ```bash
 # Python backend (apps/api)
 uv sync                          # Install dependencies
-uv run uvicorn src.main:app --reload  # Dev server (port 8000)
+uv run uvicorn src.main:app --reload --port 8100  # Dev server (port 8100)
 uv run python -m src.cli         # Run CLI agent
 uv run python -m src.ingestion.ingest  # Run document ingestion
 uv run pytest                    # Run tests
@@ -107,7 +107,7 @@ uv run ruff format --check .     # Format check
 
 # Next.js frontend (apps/web)
 pnpm install                     # Install dependencies
-pnpm dev                         # Dev server (port 3000)
+pnpm dev                         # Dev server (port 3100)
 pnpm build                       # Production build
 pnpm lint                        # Lint
 pnpm test                        # Tests
