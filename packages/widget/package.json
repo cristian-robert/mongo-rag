@@ -1,0 +1,14 @@
+{
+  "name": "@mongorag/widget",
+  "version": "0.1.0",
+  "description": "Embeddable chat widget for MongoRAG",
+  "main": "dist/widget.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --minify --outfile=dist/widget.js --format=iife --target=es2020",
+    "dev": "esbuild src/index.ts --bundle --outfile=dist/widget.js --format=iife --target=es2020 --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.0"
+  }
+}
