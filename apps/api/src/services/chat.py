@@ -138,7 +138,7 @@ class ChatService:
         # Call LLM
         agent = create_rag_agent()
         result = await agent.run(user_prompt)
-        answer = result.output if hasattr(result, "output") else str(result.data)
+        answer = str(result.output)
 
         # Extract sources and persist
         sources = self._extract_sources(results)
