@@ -27,14 +27,13 @@ async def health_check() -> dict:
     except (ConnectionFailure, ServerSelectionTimeoutError) as e:
         logger.error(f"Health check failed: {e}")
         from fastapi.responses import JSONResponse
+
         return JSONResponse(
             status_code=503,
-            content={"status": "error", "mongodb": "disconnected", "detail": str(e)}
+            content={"status": "error", "mongodb": "disconnected", "detail": str(e)},
         )
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         from fastapi.responses import JSONResponse
-        return JSONResponse(
-            status_code=503,
-            content={"status": "error", "detail": str(e)}
-        )
+
+        return JSONResponse(status_code=503, content={"status": "error", "detail": str(e)})

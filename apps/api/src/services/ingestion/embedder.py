@@ -20,8 +20,7 @@ logger = logging.getLogger(__name__)
 # Initialize client with settings
 settings = load_settings()
 embedding_client = openai.AsyncOpenAI(
-    api_key=settings.embedding_api_key,
-    base_url=settings.embedding_base_url
+    api_key=settings.embedding_api_key, base_url=settings.embedding_base_url
 )
 EMBEDDING_MODEL = settings.embedding_model
 
@@ -29,11 +28,7 @@ EMBEDDING_MODEL = settings.embedding_model
 class EmbeddingGenerator:
     """Generates embeddings for document chunks."""
 
-    def __init__(
-        self,
-        model: str = EMBEDDING_MODEL,
-        batch_size: int = 100
-    ):
+    def __init__(self, model: str = EMBEDDING_MODEL, batch_size: int = 100):
         """
         Initialize embedding generator.
 
@@ -48,13 +43,10 @@ class EmbeddingGenerator:
         self.model_configs = {
             "text-embedding-3-small": {"dimensions": 1536, "max_tokens": 8191},
             "text-embedding-3-large": {"dimensions": 3072, "max_tokens": 8191},
-            "text-embedding-ada-002": {"dimensions": 1536, "max_tokens": 8191}
+            "text-embedding-ada-002": {"dimensions": 1536, "max_tokens": 8191},
         }
 
-        self.config = self.model_configs.get(
-            model,
-            {"dimensions": 1536, "max_tokens": 8191}
-        )
+        self.config = self.model_configs.get(model, {"dimensions": 1536, "max_tokens": 8191})
 
     async def generate_embedding(self, text: str) -> List[float]:
         """
@@ -68,19 +60,13 @@ class EmbeddingGenerator:
         """
         # Truncate text if too long (rough estimation: 4 chars per token)
         if len(text) > self.config["max_tokens"] * 4:
-            text = text[:self.config["max_tokens"] * 4]
+            text = text[: self.config["max_tokens"] * 4]
 
-        response = await embedding_client.embeddings.create(
-            model=self.model,
-            input=text
-        )
+        response = await embedding_client.embeddings.create(model=self.model, input=text)
 
         return response.data[0].embedding
 
-    async def generate_embeddings_batch(
-        self,
-        texts: List[str]
-    ) -> List[List[float]]:
+    async def generate_embeddings_batch(self, texts: List[str]) -> List[List[float]]:
         """
         Generate embeddings for a batch of texts.
 
@@ -94,20 +80,15 @@ class EmbeddingGenerator:
         processed_texts = []
         for text in texts:
             if len(text) > self.config["max_tokens"] * 4:
-                text = text[:self.config["max_tokens"] * 4]
+                text = text[: self.config["max_tokens"] * 4]
             processed_texts.append(text)
 
-        response = await embedding_client.embeddings.create(
-            model=self.model,
-            input=processed_texts
-        )
+        response = await embedding_client.embeddings.create(model=self.model, input=processed_texts)
 
         return [data.embedding for data in response.data]
 
     async def embed_chunks(
-        self,
-        chunks: List[DocumentChunk],
-        progress_callback: Optional[callable] = None
+        self, chunks: List[DocumentChunk], progress_callback: Optional[callable] = None
     ) -> List[DocumentChunk]:
         """
         Generate embeddings for document chunks.
@@ -129,7 +110,7 @@ class EmbeddingGenerator:
         total_batches = (len(chunks) + self.batch_size - 1) // self.batch_size
 
         for i in range(0, len(chunks), self.batch_size):
-            batch_chunks = chunks[i:i + self.batch_size]
+            batch_chunks = chunks[i : i + self.batch_size]
             batch_texts = [chunk.content for chunk in batch_chunks]
 
             # Generate embeddings for this batch
@@ -145,9 +126,9 @@ class EmbeddingGenerator:
                     metadata={
                         **chunk.metadata,
                         "embedding_model": self.model,
-                        "embedding_generated_at": datetime.now().isoformat()
+                        "embedding_generated_at": datetime.now().isoformat(),
                     },
-                    token_count=chunk.token_count
+                    token_count=chunk.token_count,
                 )
                 embedded_chunk.embedding = embedding
                 embedded_chunks.append(embedded_chunk)

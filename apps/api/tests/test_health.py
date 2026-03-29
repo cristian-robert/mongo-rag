@@ -13,6 +13,7 @@ def client():
         mock_deps.initialize = AsyncMock()
         mock_deps.cleanup = AsyncMock()
         from src.main import app
+
         with TestClient(app) as c:
             yield c
 

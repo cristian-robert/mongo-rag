@@ -14,9 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 async def semantic_search(
-    ctx: RunContext[AgentDependencies],
-    query: str,
-    match_count: Optional[int] = None
+    ctx: RunContext[AgentDependencies], query: str, match_count: Optional[int] = None
 ) -> List[SearchResult]:
     """
     Perform pure semantic search using MongoDB vector similarity.
@@ -53,7 +51,7 @@ async def semantic_search(
                     "queryVector": query_embedding,
                     "path": "embedding",
                     "numCandidates": 100,  # Search space (10x limit is good default)
-                    "limit": match_count
+                    "limit": match_count,
                 }
             },
             {
@@ -61,12 +59,10 @@ async def semantic_search(
                     "from": deps.settings.mongodb_collection_documents,
                     "localField": "document_id",
                     "foreignField": "_id",
-                    "as": "document_info"
+                    "as": "document_info",
                 }
             },
-            {
-                "$unwind": "$document_info"
-            },
+            {"$unwind": "$document_info"},
             {
                 "$project": {
                     "chunk_id": "$_id",
@@ -75,9 +71,9 @@ async def semantic_search(
                     "similarity": {"$meta": "vectorSearchScore"},
                     "metadata": 1,
                     "document_title": "$document_info.title",
-                    "document_source": "$document_info.source"
+                    "document_source": "$document_info.source",
                 }
-            }
+            },
         ]
 
         # Execute aggregation
@@ -88,29 +84,29 @@ async def semantic_search(
         # Convert to SearchResult objects (ObjectId → str conversion)
         search_results = [
             SearchResult(
-                chunk_id=str(doc['chunk_id']),
-                document_id=str(doc['document_id']),
-                content=doc['content'],
-                similarity=doc['similarity'],
-                metadata=doc.get('metadata', {}),
-                document_title=doc['document_title'],
-                document_source=doc['document_source']
+                chunk_id=str(doc["chunk_id"]),
+                document_id=str(doc["document_id"]),
+                content=doc["content"],
+                similarity=doc["similarity"],
+                metadata=doc.get("metadata", {}),
+                document_title=doc["document_title"],
+                document_source=doc["document_source"],
             )
             for doc in results
         ]
 
         logger.info(
             "semantic_search_completed: query=%s, results=%d, match_count=%d",
-            query, len(search_results), match_count
+            query,
+            len(search_results),
+            match_count,
         )
 
         return search_results
 
     except OperationFailure as e:
-        error_code = e.code if hasattr(e, 'code') else None
-        logger.error(
-            f"semantic_search_failed: query={query}, error={str(e)}, code={error_code}"
-        )
+        error_code = e.code if hasattr(e, "code") else None
+        logger.error(f"semantic_search_failed: query={query}, error={str(e)}, code={error_code}")
         # Return empty list on error (graceful degradation)
         return []
     except Exception as e:
@@ -119,9 +115,7 @@ async def semantic_search(
 
 
 async def text_search(
-    ctx: RunContext[AgentDependencies],
-    query: str,
-    match_count: Optional[int] = None
+    ctx: RunContext[AgentDependencies], query: str, match_count: Optional[int] = None
 ) -> List[SearchResult]:
     """
     Perform full-text search using MongoDB Atlas Search.
@@ -158,11 +152,8 @@ async def text_search(
                     "text": {
                         "query": query,
                         "path": "content",
-                        "fuzzy": {
-                            "maxEdits": 2,
-                            "prefixLength": 3
-                        }
-                    }
+                        "fuzzy": {"maxEdits": 2, "prefixLength": 3},
+                    },
                 }
             },
             {
@@ -173,12 +164,10 @@ async def text_search(
                     "from": deps.settings.mongodb_collection_documents,
                     "localField": "document_id",
                     "foreignField": "_id",
-                    "as": "document_info"
+                    "as": "document_info",
                 }
             },
-            {
-                "$unwind": "$document_info"
-            },
+            {"$unwind": "$document_info"},
             {
                 "$project": {
                     "chunk_id": "$_id",
@@ -187,42 +176,42 @@ async def text_search(
                     "similarity": {"$meta": "searchScore"},  # Text relevance score
                     "metadata": 1,
                     "document_title": "$document_info.title",
-                    "document_source": "$document_info.source"
+                    "document_source": "$document_info.source",
                 }
-            }
+            },
         ]
 
         # Execute aggregation
         collection = deps.db[deps.settings.mongodb_collection_chunks]
         cursor = await collection.aggregate(pipeline)
-        results = [doc async for doc in cursor][:match_count * 2]
+        results = [doc async for doc in cursor][: match_count * 2]
 
         # Convert to SearchResult objects (ObjectId → str conversion)
         search_results = [
             SearchResult(
-                chunk_id=str(doc['chunk_id']),
-                document_id=str(doc['document_id']),
-                content=doc['content'],
-                similarity=doc['similarity'],
-                metadata=doc.get('metadata', {}),
-                document_title=doc['document_title'],
-                document_source=doc['document_source']
+                chunk_id=str(doc["chunk_id"]),
+                document_id=str(doc["document_id"]),
+                content=doc["content"],
+                similarity=doc["similarity"],
+                metadata=doc.get("metadata", {}),
+                document_title=doc["document_title"],
+                document_source=doc["document_source"],
             )
             for doc in results
         ]
 
         logger.info(
             "text_search_completed: query=%s, results=%d, match_count=%d",
-            query, len(search_results), match_count
+            query,
+            len(search_results),
+            match_count,
         )
 
         return search_results
 
     except OperationFailure as e:
-        error_code = e.code if hasattr(e, 'code') else None
-        logger.error(
-            f"text_search_failed: query={query}, error={str(e)}, code={error_code}"
-        )
+        error_code = e.code if hasattr(e, "code") else None
+        logger.error(f"text_search_failed: query={query}, error={str(e)}, code={error_code}")
         # Return empty list on error (graceful degradation)
         return []
     except Exception as e:
@@ -231,8 +220,7 @@ async def text_search(
 
 
 def reciprocal_rank_fusion(
-    search_results_list: List[List[SearchResult]],
-    k: int = 60
+    search_results_list: List[List[SearchResult]], k: int = 60
 ) -> List[SearchResult]:
     """
     Merge multiple ranked lists using Reciprocal Rank Fusion.
@@ -277,11 +265,7 @@ def reciprocal_rank_fusion(
                 chunk_map[chunk_id] = result
 
     # Sort by combined RRF score (descending)
-    sorted_chunks = sorted(
-        rrf_scores.items(),
-        key=lambda x: x[1],
-        reverse=True
-    )
+    sorted_chunks = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
 
     # Build final result list with updated similarity scores
     merged_results = []
@@ -295,13 +279,14 @@ def reciprocal_rank_fusion(
             similarity=rrf_score,  # Combined RRF score
             metadata=result.metadata,
             document_title=result.document_title,
-            document_source=result.document_source
+            document_source=result.document_source,
         )
         merged_results.append(merged_result)
 
     logger.info(
         "RRF merged %d result lists into %d unique results",
-        len(search_results_list), len(merged_results)
+        len(search_results_list),
+        len(merged_results),
     )
 
     return merged_results
@@ -311,7 +296,7 @@ async def hybrid_search(
     ctx: RunContext[AgentDependencies],
     query: str,
     match_count: Optional[int] = None,
-    text_weight: Optional[float] = None
+    text_weight: Optional[float] = None,
 ) -> List[SearchResult]:
     """
     Perform hybrid search combining semantic and keyword matching.
@@ -353,7 +338,7 @@ async def hybrid_search(
         semantic_results, text_results = await asyncio.gather(
             semantic_search(ctx, query, fetch_count),
             text_search(ctx, query, fetch_count),
-            return_exceptions=True  # Don't fail if one search errors
+            return_exceptions=True,  # Don't fail if one search errors
         )
 
         # Handle errors gracefully
@@ -372,7 +357,7 @@ async def hybrid_search(
         # Merge results using Reciprocal Rank Fusion
         merged_results = reciprocal_rank_fusion(
             [semantic_results, text_results],
-            k=60  # Standard RRF constant
+            k=60,  # Standard RRF constant
         )
 
         # Return top N results

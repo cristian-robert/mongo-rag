@@ -19,8 +19,7 @@ _deps = AgentDependencies()
 async def lifespan(app: FastAPI):
     """Initialize and clean up application resources."""
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
     logger.info("Starting MongoRAG API...")
     try:
