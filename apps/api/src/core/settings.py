@@ -81,9 +81,7 @@ class Settings(BaseSettings):
         default=10, description="Default number of search results to return"
     )
 
-    max_match_count: int = Field(
-        default=50, description="Maximum number of search results allowed"
-    )
+    max_match_count: int = Field(default=50, description="Maximum number of search results allowed")
 
     default_text_weight: float = Field(
         default=0.3, description="Default text weight for hybrid search (0-1)"

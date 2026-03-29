@@ -14,15 +14,12 @@ from src.services.search import hybrid_search, semantic_search, text_search
 
 class RAGState(BaseModel):
     """Minimal shared state for the RAG agent."""
+
     pass
 
 
 # Create the RAG agent with AGUI support
-rag_agent = Agent(
-    get_llm_model(),
-    deps_type=StateDeps[RAGState],
-    system_prompt=MAIN_SYSTEM_PROMPT
-)
+rag_agent = Agent(get_llm_model(), deps_type=StateDeps[RAGState], system_prompt=MAIN_SYSTEM_PROMPT)
 
 
 @rag_agent.tool
@@ -30,7 +27,7 @@ async def search_knowledge_base(
     ctx: RunContext[StateDeps[RAGState]],
     query: str,
     match_count: Optional[int] = 5,
-    search_type: Optional[str] = "hybrid"
+    search_type: Optional[str] = "hybrid",
 ) -> str:
     """
     Search the knowledge base for relevant information.
@@ -58,23 +55,11 @@ async def search_knowledge_base(
 
         # Perform the search based on type
         if search_type == "hybrid":
-            results = await hybrid_search(
-                ctx=deps_ctx,
-                query=query,
-                match_count=match_count
-            )
+            results = await hybrid_search(ctx=deps_ctx, query=query, match_count=match_count)
         elif search_type == "semantic":
-            results = await semantic_search(
-                ctx=deps_ctx,
-                query=query,
-                match_count=match_count
-            )
+            results = await semantic_search(ctx=deps_ctx, query=query, match_count=match_count)
         else:
-            results = await text_search(
-                ctx=deps_ctx,
-                query=query,
-                match_count=match_count
-            )
+            results = await text_search(ctx=deps_ctx, query=query, match_count=match_count)
 
         # Clean up
         await agent_deps.cleanup()

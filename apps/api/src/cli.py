@@ -24,9 +24,7 @@ console = Console()
 
 
 async def stream_agent_interaction(
-    user_input: str,
-    message_history: List,
-    deps: StateDeps[RAGState]
+    user_input: str, message_history: List, deps: StateDeps[RAGState]
 ) -> tuple[str, List]:
     """
     Stream agent interaction with real-time tool call display.
@@ -44,28 +42,21 @@ async def stream_agent_interaction(
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
         import traceback
+
         traceback.print_exc()
         return ("", [])
 
 
 async def _stream_agent(
-    user_input: str,
-    deps: StateDeps[RAGState],
-    message_history: List
+    user_input: str, deps: StateDeps[RAGState], message_history: List
 ) -> tuple[str, List]:
     """Stream the agent execution and return response."""
 
     response_text = ""
 
     # Stream the agent execution with message history
-    async with rag_agent.iter(
-        user_input,
-        deps=deps,
-        message_history=message_history
-    ) as run:
-
+    async with rag_agent.iter(user_input, deps=deps, message_history=message_history) as run:
         async for node in run:
-
             # Handle user prompt node
             if Agent.is_user_prompt_node(node):
                 pass  # Clean start
@@ -79,7 +70,7 @@ async def _stream_agent(
                 async with node.stream(run.ctx) as request_stream:
                     async for event in request_stream:
                         # Handle text part start events
-                        if isinstance(event, PartStartEvent) and event.part.part_kind == 'text':
+                        if isinstance(event, PartStartEvent) and event.part.part_kind == "text":
                             initial_text = event.part.content
                             if initial_text:
                                 console.print(initial_text, end="")
@@ -110,32 +101,32 @@ async def _stream_agent(
                             args = None
 
                             # Check if the part attribute contains the tool call
-                            if hasattr(event, 'part'):
+                            if hasattr(event, "part"):
                                 part = event.part
 
                                 # Check for tool name
-                                if hasattr(part, 'tool_name'):
+                                if hasattr(part, "tool_name"):
                                     tool_name = part.tool_name
-                                elif hasattr(part, 'function_name'):
+                                elif hasattr(part, "function_name"):
                                     tool_name = part.function_name
-                                elif hasattr(part, 'name'):
+                                elif hasattr(part, "name"):
                                     tool_name = part.name
 
                                 # Check for arguments
-                                if hasattr(part, 'args'):
+                                if hasattr(part, "args"):
                                     args = part.args
-                                elif hasattr(part, 'arguments'):
+                                elif hasattr(part, "arguments"):
                                     args = part.arguments
 
                             console.print(f"  [cyan]Calling tool:[/cyan] [bold]{tool_name}[/bold]")
 
                             # Show search query if it's a search tool
                             if args and isinstance(args, dict):
-                                if 'query' in args:
+                                if "query" in args:
                                     console.print(f"    [dim]Query:[/dim] {args['query']}")
-                                if 'search_type' in args:
+                                if "search_type" in args:
                                     console.print(f"    [dim]Type:[/dim] {args['search_type']}")
-                                if 'match_count' in args:
+                                if "match_count" in args:
                                     console.print(f"    [dim]Results:[/dim] {args['match_count']}")
                             elif args:
                                 args_str = str(args)
@@ -154,7 +145,7 @@ async def _stream_agent(
     new_messages = run.result.new_messages()
 
     # Get final output
-    final_output = run.result.output if hasattr(run.result, 'output') else str(run.result)
+    final_output = run.result.output if hasattr(run.result, "output") else str(run.result)
     response = response_text.strip() or final_output
 
     # Return both streamed text and new messages
@@ -171,7 +162,7 @@ def display_welcome():
         f"[dim]LLM: {settings.llm_model}[/dim]\n\n"
         "[dim]Type 'exit' to quit, 'info' for system info, 'clear' to clear screen[/dim]",
         style="blue",
-        padding=(1, 2)
+        padding=(1, 2),
     )
     console.print(welcome)
     console.print()
@@ -201,24 +192,26 @@ async def main():
                 user_input = Prompt.ask("[bold green]You").strip()
 
                 # Handle special commands
-                if user_input.lower() in ['exit', 'quit', 'q']:
+                if user_input.lower() in ["exit", "quit", "q"]:
                     console.print("\n[yellow]👋 Goodbye![/yellow]")
                     break
 
-                elif user_input.lower() == 'info':
+                elif user_input.lower() == "info":
                     settings = load_settings()
-                    console.print(Panel(
-                        f"[cyan]LLM Provider:[/cyan] {settings.llm_provider}\n"
-                        f"[cyan]LLM Model:[/cyan] {settings.llm_model}\n"
-                        f"[cyan]Embedding Model:[/cyan] {settings.embedding_model}\n"
-                        f"[cyan]Default Match Count:[/cyan] {settings.default_match_count}\n"
-                        f"[cyan]Default Text Weight:[/cyan] {settings.default_text_weight}",
-                        title="System Configuration",
-                        border_style="magenta"
-                    ))
+                    console.print(
+                        Panel(
+                            f"[cyan]LLM Provider:[/cyan] {settings.llm_provider}\n"
+                            f"[cyan]LLM Model:[/cyan] {settings.llm_model}\n"
+                            f"[cyan]Embedding Model:[/cyan] {settings.embedding_model}\n"
+                            f"[cyan]Default Match Count:[/cyan] {settings.default_match_count}\n"
+                            f"[cyan]Default Text Weight:[/cyan] {settings.default_text_weight}",
+                            title="System Configuration",
+                            border_style="magenta",
+                        )
+                    )
                     continue
 
-                elif user_input.lower() == 'clear':
+                elif user_input.lower() == "clear":
                     console.clear()
                     display_welcome()
                     continue
@@ -228,9 +221,7 @@ async def main():
 
                 # Stream the interaction and get response
                 response_text, new_messages = await stream_agent_interaction(
-                    user_input,
-                    message_history,
-                    deps
+                    user_input, message_history, deps
                 )
 
                 # Add new messages to history (includes both user prompt and agent response)
@@ -246,6 +237,7 @@ async def main():
             except Exception as e:
                 console.print(f"[red]Error: {e}[/red]")
                 import traceback
+
                 traceback.print_exc()
                 continue
 

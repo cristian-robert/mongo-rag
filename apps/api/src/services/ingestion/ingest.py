@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class IngestionConfig:
     """Configuration for document ingestion."""
+
     chunk_size: int = 1000
     chunk_overlap: int = 200
     max_chunk_size: int = 2000
@@ -40,6 +41,7 @@ class IngestionConfig:
 @dataclass
 class IngestionResult:
     """Result of document ingestion."""
+
     document_id: str
     title: str
     chunks_created: int
@@ -54,7 +56,7 @@ class DocumentIngestionPipeline:
         self,
         config: IngestionConfig,
         documents_folder: str = "documents",
-        clean_before_ingest: bool = True
+        clean_before_ingest: bool = True,
     ):
         """
         Initialize ingestion pipeline.
@@ -80,7 +82,7 @@ class DocumentIngestionPipeline:
             chunk_size=config.chunk_size,
             chunk_overlap=config.chunk_overlap,
             max_chunk_size=config.max_chunk_size,
-            max_tokens=config.max_tokens
+            max_tokens=config.max_tokens,
         )
 
         self.chunker = create_chunker(self.chunker_config)
@@ -104,16 +106,13 @@ class DocumentIngestionPipeline:
         try:
             # Initialize MongoDB client
             self.mongo_client = AsyncMongoClient(
-                self.settings.mongodb_uri,
-                serverSelectionTimeoutMS=5000
+                self.settings.mongodb_uri, serverSelectionTimeoutMS=5000
             )
             self.db = self.mongo_client[self.settings.mongodb_database]
 
             # Verify connection
             await self.mongo_client.admin.command("ping")
-            logger.info(
-                f"Connected to MongoDB database: {self.settings.mongodb_database}"
-            )
+            logger.info(f"Connected to MongoDB database: {self.settings.mongodb_database}")
 
         except (ConnectionFailure, ServerSelectionTimeoutError) as e:
             logger.exception("mongodb_connection_failed", error=str(e))
@@ -144,22 +143,28 @@ class DocumentIngestionPipeline:
 
         # Supported file patterns - Docling + text formats + audio
         patterns = [
-            "*.md", "*.markdown", "*.txt",  # Text formats
+            "*.md",
+            "*.markdown",
+            "*.txt",  # Text formats
             "*.pdf",  # PDF
-            "*.docx", "*.doc",  # Word
-            "*.pptx", "*.ppt",  # PowerPoint
-            "*.xlsx", "*.xls",  # Excel
-            "*.html", "*.htm",  # HTML
-            "*.mp3", "*.wav", "*.m4a", "*.flac",  # Audio formats
+            "*.docx",
+            "*.doc",  # Word
+            "*.pptx",
+            "*.ppt",  # PowerPoint
+            "*.xlsx",
+            "*.xls",  # Excel
+            "*.html",
+            "*.htm",  # HTML
+            "*.mp3",
+            "*.wav",
+            "*.m4a",
+            "*.flac",  # Audio formats
         ]
         files = []
 
         for pattern in patterns:
             files.extend(
-                glob.glob(
-                    os.path.join(self.documents_folder, "**", pattern),
-                    recursive=True
-                )
+                glob.glob(os.path.join(self.documents_folder, "**", pattern), recursive=True)
             )
 
         return sorted(files)
@@ -178,16 +183,24 @@ class DocumentIngestionPipeline:
         file_ext = os.path.splitext(file_path)[1].lower()
 
         # Audio formats - transcribe with Whisper ASR
-        audio_formats = ['.mp3', '.wav', '.m4a', '.flac']
+        audio_formats = [".mp3", ".wav", ".m4a", ".flac"]
         if file_ext in audio_formats:
             # Returns tuple: (markdown_content, docling_document)
             return self._transcribe_audio(file_path)
 
         # Docling-supported formats (convert to markdown)
         docling_formats = [
-            '.pdf', '.docx', '.doc', '.pptx', '.ppt',
-            '.xlsx', '.xls', '.html', '.htm',
-            '.md', '.markdown'  # Markdown files for HybridChunker
+            ".pdf",
+            ".docx",
+            ".doc",
+            ".pptx",
+            ".ppt",
+            ".xlsx",
+            ".xls",
+            ".html",
+            ".htm",
+            ".md",
+            ".markdown",  # Markdown files for HybridChunker
         ]
 
         if file_ext in docling_formats:
@@ -195,8 +208,7 @@ class DocumentIngestionPipeline:
                 from docling.document_converter import DocumentConverter
 
                 logger.info(
-                    f"Converting {file_ext} file using Docling: "
-                    f"{os.path.basename(file_path)}"
+                    f"Converting {file_ext} file using Docling: {os.path.basename(file_path)}"
                 )
 
                 converter = DocumentConverter()
@@ -204,10 +216,7 @@ class DocumentIngestionPipeline:
 
                 # Export to markdown for consistent processing
                 markdown_content = result.document.export_to_markdown()
-                logger.info(
-                    f"Successfully converted {os.path.basename(file_path)} "
-                    f"to markdown"
-                )
+                logger.info(f"Successfully converted {os.path.basename(file_path)} to markdown")
 
                 # Return both markdown and DoclingDocument for HybridChunker
                 return (markdown_content, result.document)
@@ -217,22 +226,19 @@ class DocumentIngestionPipeline:
                 # Fall back to raw text if Docling fails
                 logger.warning(f"Falling back to raw text extraction for {file_path}")
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
+                    with open(file_path, "r", encoding="utf-8") as f:
                         return (f.read(), None)
                 except Exception:
-                    return (
-                        f"[Error: Could not read file {os.path.basename(file_path)}]",
-                        None
-                    )
+                    return (f"[Error: Could not read file {os.path.basename(file_path)}]", None)
 
         # Text-based formats (read directly)
         else:
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     return (f.read(), None)
             except UnicodeDecodeError:
                 # Try with different encoding
-                with open(file_path, 'r', encoding='latin-1') as f:
+                with open(file_path, "r", encoding="latin-1") as f:
                     return (f.read(), None)
 
     def _transcribe_audio(self, file_path: str) -> tuple[str, Optional[Any]]:
@@ -256,9 +262,7 @@ class DocumentIngestionPipeline:
 
             # Use Path object - Docling expects this
             audio_path = Path(file_path).resolve()
-            logger.info(
-                f"Transcribing audio file using Whisper Turbo: {audio_path.name}"
-            )
+            logger.info(f"Transcribing audio file using Whisper Turbo: {audio_path.name}")
 
             # Verify file exists
             if not audio_path.exists():
@@ -289,11 +293,7 @@ class DocumentIngestionPipeline:
 
         except Exception as e:
             logger.error(f"Failed to transcribe {file_path} with Whisper ASR: {e}")
-            return (
-                f"[Error: Could not transcribe audio file "
-                f"{os.path.basename(file_path)}]",
-                None
-            )
+            return (f"[Error: Could not transcribe audio file {os.path.basename(file_path)}]", None)
 
     def _extract_title(self, content: str, file_path: str) -> str:
         """
@@ -307,20 +307,16 @@ class DocumentIngestionPipeline:
             Document title
         """
         # Try to find markdown title
-        lines = content.split('\n')
+        lines = content.split("\n")
         for line in lines[:10]:  # Check first 10 lines
             line = line.strip()
-            if line.startswith('# '):
+            if line.startswith("# "):
                 return line[2:].strip()
 
         # Fallback to filename
         return os.path.splitext(os.path.basename(file_path))[0]
 
-    def _extract_document_metadata(
-        self,
-        content: str,
-        file_path: str
-    ) -> Dict[str, Any]:
+    def _extract_document_metadata(self, content: str, file_path: str) -> Dict[str, Any]:
         """
         Extract metadata from document content.
 
@@ -334,30 +330,29 @@ class DocumentIngestionPipeline:
         metadata = {
             "file_path": file_path,
             "file_size": len(content),
-            "ingestion_date": datetime.now().isoformat()
+            "ingestion_date": datetime.now().isoformat(),
         }
 
         # Try to extract YAML frontmatter
-        if content.startswith('---'):
+        if content.startswith("---"):
             try:
                 import yaml
-                end_marker = content.find('\n---\n', 4)
+
+                end_marker = content.find("\n---\n", 4)
                 if end_marker != -1:
                     frontmatter = content[4:end_marker]
                     yaml_metadata = yaml.safe_load(frontmatter)
                     if isinstance(yaml_metadata, dict):
                         metadata.update(yaml_metadata)
             except ImportError:
-                logger.warning(
-                    "PyYAML not installed, skipping frontmatter extraction"
-                )
+                logger.warning("PyYAML not installed, skipping frontmatter extraction")
             except Exception as e:
                 logger.warning(f"Failed to parse frontmatter: {e}")
 
         # Extract some basic metadata from content
-        lines = content.split('\n')
-        metadata['line_count'] = len(lines)
-        metadata['word_count'] = len(content.split())
+        lines = content.split("\n")
+        metadata["line_count"] = len(lines)
+        metadata["word_count"] = len(content.split())
 
         return metadata
 
@@ -367,7 +362,7 @@ class DocumentIngestionPipeline:
         source: str,
         content: str,
         chunks: List[DocumentChunk],
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
     ) -> str:
         """
         Save document and chunks to MongoDB.
@@ -386,9 +381,7 @@ class DocumentIngestionPipeline:
             Exception: If MongoDB operations fail
         """
         # Get collection references
-        documents_collection = self.db[
-            self.settings.mongodb_collection_documents
-        ]
+        documents_collection = self.db[self.settings.mongodb_collection_documents]
         chunks_collection = self.db[self.settings.mongodb_collection_chunks]
 
         # Insert document
@@ -397,7 +390,7 @@ class DocumentIngestionPipeline:
             "source": source,
             "content": content,
             "metadata": metadata,
-            "created_at": datetime.now()
+            "created_at": datetime.now(),
         }
 
         document_result = await documents_collection.insert_one(document_dict)
@@ -415,7 +408,7 @@ class DocumentIngestionPipeline:
                 "chunk_index": chunk.index,
                 "metadata": chunk.metadata,
                 "token_count": chunk.token_count,
-                "created_at": datetime.now()
+                "created_at": datetime.now(),
             }
             chunk_dicts.append(chunk_dict)
 
@@ -431,9 +424,7 @@ class DocumentIngestionPipeline:
         logger.warning("Cleaning existing data from MongoDB...")
 
         # Get collection references
-        documents_collection = self.db[
-            self.settings.mongodb_collection_documents
-        ]
+        documents_collection = self.db[self.settings.mongodb_collection_documents]
         chunks_collection = self.db[self.settings.mongodb_collection_chunks]
 
         # Delete all chunks first (to respect FK relationships)
@@ -462,10 +453,7 @@ class DocumentIngestionPipeline:
         document_source = os.path.relpath(file_path, self.documents_folder)
 
         # Extract metadata from content
-        document_metadata = self._extract_document_metadata(
-            document_content,
-            file_path
-        )
+        document_metadata = self._extract_document_metadata(document_content, file_path)
 
         logger.info(f"Processing document: {document_title}")
 
@@ -475,7 +463,7 @@ class DocumentIngestionPipeline:
             title=document_title,
             source=document_source,
             metadata=document_metadata,
-            docling_doc=docling_doc  # Pass DoclingDocument for HybridChunker
+            docling_doc=docling_doc,  # Pass DoclingDocument for HybridChunker
         )
 
         if not chunks:
@@ -484,10 +472,8 @@ class DocumentIngestionPipeline:
                 document_id="",
                 title=document_title,
                 chunks_created=0,
-                processing_time_ms=(
-                    datetime.now() - start_time
-                ).total_seconds() * 1000,
-                errors=["No chunks created"]
+                processing_time_ms=(datetime.now() - start_time).total_seconds() * 1000,
+                errors=["No chunks created"],
             )
 
         logger.info(f"Created {len(chunks)} chunks")
@@ -498,31 +484,24 @@ class DocumentIngestionPipeline:
 
         # Save to MongoDB
         document_id = await self._save_to_mongodb(
-            document_title,
-            document_source,
-            document_content,
-            embedded_chunks,
-            document_metadata
+            document_title, document_source, document_content, embedded_chunks, document_metadata
         )
 
         logger.info(f"Saved document to MongoDB with ID: {document_id}")
 
         # Calculate processing time
-        processing_time = (
-            datetime.now() - start_time
-        ).total_seconds() * 1000
+        processing_time = (datetime.now() - start_time).total_seconds() * 1000
 
         return IngestionResult(
             document_id=document_id,
             title=document_title,
             chunks_created=len(chunks),
             processing_time_ms=processing_time,
-            errors=[]
+            errors=[],
         )
 
     async def ingest_documents(
-        self,
-        progress_callback: Optional[callable] = None
+        self, progress_callback: Optional[callable] = None
     ) -> List[IngestionResult]:
         """
         Ingest all documents from the documents folder.
@@ -544,9 +523,7 @@ class DocumentIngestionPipeline:
         document_files = self._find_document_files()
 
         if not document_files:
-            logger.warning(
-                f"No supported document files found in {self.documents_folder}"
-            )
+            logger.warning(f"No supported document files found in {self.documents_folder}")
             return []
 
         logger.info(f"Found {len(document_files)} document files to process")
@@ -555,9 +532,7 @@ class DocumentIngestionPipeline:
 
         for i, file_path in enumerate(document_files):
             try:
-                logger.info(
-                    f"Processing file {i+1}/{len(document_files)}: {file_path}"
-                )
+                logger.info(f"Processing file {i + 1}/{len(document_files)}: {file_path}")
 
                 result = await self._ingest_single_document(file_path)
                 results.append(result)
@@ -567,13 +542,15 @@ class DocumentIngestionPipeline:
 
             except Exception as e:
                 logger.exception(f"Failed to process {file_path}: {e}")
-                results.append(IngestionResult(
-                    document_id="",
-                    title=os.path.basename(file_path),
-                    chunks_created=0,
-                    processing_time_ms=0,
-                    errors=[str(e)]
-                ))
+                results.append(
+                    IngestionResult(
+                        document_id="",
+                        title=os.path.basename(file_path),
+                        chunks_created=0,
+                        processing_time_ms=0,
+                        errors=[str(e)],
+                    )
+                )
 
         # Log summary
         total_chunks = sum(r.chunks_created for r in results)
@@ -589,50 +566,26 @@ class DocumentIngestionPipeline:
 
 async def main() -> None:
     """Main function for running ingestion."""
-    parser = argparse.ArgumentParser(
-        description="Ingest documents into MongoDB vector database"
+    parser = argparse.ArgumentParser(description="Ingest documents into MongoDB vector database")
+    parser.add_argument("--documents", "-d", default="documents", help="Documents folder path")
+    parser.add_argument(
+        "--no-clean", action="store_true", help="Skip cleaning existing data before ingestion"
     )
     parser.add_argument(
-        "--documents", "-d",
-        default="documents",
-        help="Documents folder path"
+        "--chunk-size", type=int, default=1000, help="Chunk size for splitting documents"
     )
+    parser.add_argument("--chunk-overlap", type=int, default=200, help="Chunk overlap size")
     parser.add_argument(
-        "--no-clean",
-        action="store_true",
-        help="Skip cleaning existing data before ingestion"
+        "--max-tokens", type=int, default=512, help="Maximum tokens per chunk for embeddings"
     )
-    parser.add_argument(
-        "--chunk-size",
-        type=int,
-        default=1000,
-        help="Chunk size for splitting documents"
-    )
-    parser.add_argument(
-        "--chunk-overlap",
-        type=int,
-        default=200,
-        help="Chunk overlap size"
-    )
-    parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=512,
-        help="Maximum tokens per chunk for embeddings"
-    )
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Enable verbose logging"
-    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
 
     args = parser.parse_args()
 
     # Configure logging
     log_level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
 
     # Create ingestion configuration
@@ -640,14 +593,14 @@ async def main() -> None:
         chunk_size=args.chunk_size,
         chunk_overlap=args.chunk_overlap,
         max_chunk_size=args.chunk_size * 2,
-        max_tokens=args.max_tokens
+        max_tokens=args.max_tokens,
     )
 
     # Create and run pipeline - clean by default unless --no-clean is specified
     pipeline = DocumentIngestionPipeline(
         config=config,
         documents_folder=args.documents,
-        clean_before_ingest=not args.no_clean  # Clean by default
+        clean_before_ingest=not args.no_clean,  # Clean by default
     )
 
     def progress_callback(current: int, total: int) -> None:
@@ -662,9 +615,9 @@ async def main() -> None:
         total_time = (end_time - start_time).total_seconds()
 
         # Print summary
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
         print("INGESTION SUMMARY")
-        print("="*50)
+        print("=" * 50)
         print(f"Documents processed: {len(results)}")
         print(f"Total chunks created: {sum(r.chunks_created for r in results)}")
         print(f"Total errors: {sum(len(r.errors) for r in results)}")
@@ -681,9 +634,9 @@ async def main() -> None:
                     print(f"  Error: {error}")
 
         # Print next steps
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
         print("NEXT STEPS")
-        print("="*50)
+        print("=" * 50)
         print("1. Create vector search index in Atlas UI:")
         print("   - Index name: vector_index")
         print("   - Collection: chunks")
