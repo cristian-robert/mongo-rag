@@ -1,15 +1,15 @@
 """Main MongoDB RAG agent implementation with shared state."""
 
-from pydantic_ai import Agent, RunContext
-from pydantic import BaseModel
 from typing import Optional
 
+from pydantic import BaseModel
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.ag_ui import StateDeps
 
-from src.core.providers import get_llm_model
 from src.core.dependencies import AgentDependencies
 from src.core.prompts import MAIN_SYSTEM_PROMPT
-from src.services.search import semantic_search, hybrid_search, text_search
+from src.core.providers import get_llm_model
+from src.services.search import hybrid_search, semantic_search, text_search
 
 
 class RAGState(BaseModel):
@@ -87,7 +87,10 @@ async def search_knowledge_base(
         response_parts = [f"Found {len(results)} relevant documents:\n"]
 
         for i, result in enumerate(results, 1):
-            response_parts.append(f"\n--- Document {i}: {result.document_title} (relevance: {result.similarity:.2f}) ---")
+            response_parts.append(
+                f"\n--- Document {i}: {result.document_title} "
+                f"(relevance: {result.similarity:.2f}) ---"
+            )
             response_parts.append(result.content)
 
         return "\n".join(response_parts)

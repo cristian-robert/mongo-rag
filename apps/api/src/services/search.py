@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Dict, List, Optional
+
 from pydantic_ai import RunContext
 from pymongo.errors import OperationFailure
 
@@ -99,7 +100,8 @@ async def semantic_search(
         ]
 
         logger.info(
-            f"semantic_search_completed: query={query}, results={len(search_results)}, match_count={match_count}"
+            "semantic_search_completed: query=%s, results=%d, match_count=%d",
+            query, len(search_results), match_count
         )
 
         return search_results
@@ -210,7 +212,8 @@ async def text_search(
         ]
 
         logger.info(
-            f"text_search_completed: query={query}, results={len(search_results)}, match_count={match_count}"
+            "text_search_completed: query=%s, results=%d, match_count=%d",
+            query, len(search_results), match_count
         )
 
         return search_results
@@ -296,7 +299,10 @@ def reciprocal_rank_fusion(
         )
         merged_results.append(merged_result)
 
-    logger.info(f"RRF merged {len(search_results_list)} result lists into {len(merged_results)} unique results")
+    logger.info(
+        "RRF merged %d result lists into %d unique results",
+        len(search_results_list), len(merged_results)
+    )
 
     return merged_results
 
@@ -386,5 +392,5 @@ async def hybrid_search(
         try:
             logger.info("Falling back to semantic search only")
             return await semantic_search(ctx, query, match_count)
-        except:
+        except Exception:
             return []

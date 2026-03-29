@@ -14,15 +14,14 @@ Benefits over custom chunking:
 - Battle-tested (maintained by Docling team)
 """
 
-import os
 import logging
-from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional
 
-from dotenv import load_dotenv
-from transformers import AutoTokenizer
 from docling.chunking import HybridChunker
 from docling_core.types.doc import DoclingDocument
+from dotenv import load_dotenv
+from transformers import AutoTokenizer
 
 # Load environment variables
 load_dotenv()

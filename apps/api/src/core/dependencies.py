@@ -1,11 +1,13 @@
 """Dependencies for MongoDB RAG Agent."""
 
-from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
 import logging
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional
+
+import openai
 from pymongo import AsyncMongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
-import openai
+
 from src.core.settings import load_settings
 
 logger = logging.getLogger(__name__)

@@ -1,8 +1,10 @@
 """Model providers for Semantic Search Agent."""
 
 from typing import Optional
-from pydantic_ai.providers.openai import OpenAIProvider
+
 from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.providers.openai import OpenAIProvider
+
 from src.core.settings import load_settings
 
 

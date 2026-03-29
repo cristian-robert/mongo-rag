@@ -4,18 +4,18 @@
 import asyncio
 from typing import List
 
+from dotenv import load_dotenv
+from pydantic_ai import Agent
+from pydantic_ai.ag_ui import StateDeps
+from pydantic_ai.messages import PartDeltaEvent, PartStartEvent, TextPartDelta
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from pydantic_ai import Agent
-from pydantic_ai.messages import PartDeltaEvent, PartStartEvent, TextPartDelta
-from pydantic_ai.ag_ui import StateDeps
-from dotenv import load_dotenv
+from src.core.settings import load_settings
 
 # Import our agent and dependencies
-from src.services.agent import rag_agent, RAGState
-from src.core.settings import load_settings
+from src.services.agent import RAGState, rag_agent
 
 # Load environment variables
 load_dotenv(override=True)
@@ -86,7 +86,9 @@ async def _stream_agent(
                                 response_text += initial_text
 
                         # Handle text delta events for streaming
-                        elif isinstance(event, PartDeltaEvent) and isinstance(event.delta, TextPartDelta):
+                        elif isinstance(event, PartDeltaEvent) and isinstance(
+                            event.delta, TextPartDelta
+                        ):
                             delta_text = event.delta.content_delta
                             if delta_text:
                                 console.print(delta_text, end="")
@@ -142,7 +144,7 @@ async def _stream_agent(
                                 console.print(f"    [dim]Args: {args_str}[/dim]")
 
                         elif event_type == "FunctionToolResultEvent":
-                            console.print(f"  [green]Search completed successfully[/green]")
+                            console.print("  [green]Search completed successfully[/green]")
 
             # Handle end node
             elif Agent.is_end_node(node):

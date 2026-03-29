@@ -20,8 +20,8 @@ def client():
 @pytest.mark.unit
 def test_health_returns_ok(client):
     """Health endpoint returns 200 when MongoDB is reachable."""
-    with patch("src.routers.health.AgentDependencies") as MockDeps:
-        instance = MockDeps.return_value
+    with patch("src.routers.health.AgentDependencies") as mock_deps_cls:
+        instance = mock_deps_cls.return_value
         instance.initialize = AsyncMock()
         instance.cleanup = AsyncMock()
 
@@ -38,8 +38,8 @@ def test_health_returns_503_on_mongo_failure(client):
     """Health endpoint returns 503 when MongoDB is unreachable."""
     from pymongo.errors import ConnectionFailure
 
-    with patch("src.routers.health.AgentDependencies") as MockDeps:
-        instance = MockDeps.return_value
+    with patch("src.routers.health.AgentDependencies") as mock_deps_cls:
+        instance = mock_deps_cls.return_value
         instance.initialize = AsyncMock(side_effect=ConnectionFailure("Connection refused"))
         instance.cleanup = AsyncMock()
 

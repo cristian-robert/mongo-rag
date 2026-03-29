@@ -1,9 +1,10 @@
 """Settings configuration for MongoDB RAG Agent."""
 
-from pydantic_settings import BaseSettings
-from pydantic import Field, ConfigDict
-from dotenv import load_dotenv
 from typing import Optional
+
+from dotenv import load_dotenv
+from pydantic import ConfigDict, Field
+from pydantic_settings import BaseSettings
 
 # Load environment variables from .env file
 load_dotenv()

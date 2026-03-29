@@ -5,24 +5,22 @@ This adapts the examples/ingestion/ingest.py pipeline to use MongoDB instead of 
 changing only the database layer while preserving all document processing logic.
 """
 
-import os
-import asyncio
-import logging
-import glob
-from pathlib import Path
-from typing import List, Dict, Any, Optional
-from datetime import datetime
 import argparse
+import asyncio
+import glob
+import logging
+import os
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
+from dotenv import load_dotenv
 from pymongo import AsyncMongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
-from bson import ObjectId
-from dotenv import load_dotenv
 
-from src.services.ingestion.chunker import ChunkingConfig, create_chunker, DocumentChunk
-from src.services.ingestion.embedder import create_embedder
 from src.core.settings import load_settings
+from src.services.ingestion.chunker import ChunkingConfig, DocumentChunk, create_chunker
+from src.services.ingestion.embedder import create_embedder
 
 # Load environment variables
 load_dotenv()
@@ -249,13 +247,11 @@ class DocumentIngestionPipeline:
         """
         try:
             from pathlib import Path
-            from docling.document_converter import (
-                DocumentConverter,
-                AudioFormatOption
-            )
-            from docling.datamodel.pipeline_options import AsrPipelineOptions
+
             from docling.datamodel import asr_model_specs
             from docling.datamodel.base_models import InputFormat
+            from docling.datamodel.pipeline_options import AsrPipelineOptions
+            from docling.document_converter import AudioFormatOption, DocumentConverter
             from docling.pipeline.asr_pipeline import AsrPipeline
 
             # Use Path object - Docling expects this

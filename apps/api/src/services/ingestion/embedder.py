@@ -3,14 +3,14 @@ Document embedding generation for vector search.
 """
 
 import logging
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
 
-from dotenv import load_dotenv
 import openai
+from dotenv import load_dotenv
 
-from src.services.ingestion.chunker import DocumentChunk
 from src.core.settings import load_settings
+from src.services.ingestion.chunker import DocumentChunk
 
 # Load environment variables
 load_dotenv()
