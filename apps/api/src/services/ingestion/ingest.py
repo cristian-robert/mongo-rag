@@ -169,7 +169,7 @@ class DocumentIngestionPipeline:
 
         return sorted(files)
 
-    def _read_document(self, file_path: str) -> tuple[str, Optional[Any]]:
+    def read_document(self, file_path: str) -> tuple[str, Optional[Any]]:
         """
         Read document content from file - supports multiple formats via Docling.
 
@@ -295,7 +295,7 @@ class DocumentIngestionPipeline:
             logger.error(f"Failed to transcribe {file_path} with Whisper ASR: {e}")
             return (f"[Error: Could not transcribe audio file {os.path.basename(file_path)}]", None)
 
-    def _extract_title(self, content: str, file_path: str) -> str:
+    def extract_title(self, content: str, file_path: str) -> str:
         """
         Extract title from document content or filename.
 
@@ -448,8 +448,8 @@ class DocumentIngestionPipeline:
         start_time = datetime.now()
 
         # Read document (returns tuple: content, docling_doc)
-        document_content, docling_doc = self._read_document(file_path)
-        document_title = self._extract_title(document_content, file_path)
+        document_content, docling_doc = self.read_document(file_path)
+        document_title = self.extract_title(document_content, file_path)
         document_source = os.path.relpath(file_path, self.documents_folder)
 
         # Extract metadata from content

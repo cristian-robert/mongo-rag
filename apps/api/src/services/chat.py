@@ -13,6 +13,10 @@ from src.services.conversation import ConversationService
 logger = logging.getLogger(__name__)
 
 
+class ConversationNotFoundError(Exception):
+    """Raised when a conversation_id does not exist or belongs to another tenant."""
+
+
 class ChatService:
     """Orchestrates the RAG chat flow: search, prompt, LLM, persistence."""
 
@@ -44,7 +48,7 @@ class ChatService:
         # Get or create conversation
         conv = await self.conversation_service.get_or_create(tenant_id, conversation_id)
         if conv is None:
-            raise ValueError("Conversation not found")
+            raise ConversationNotFoundError("Conversation not found")
 
         conv_id = str(conv["_id"])
 
@@ -170,7 +174,7 @@ class ChatService:
             conv_id, user_prompt, results = await self._prepare_chat(
                 message, tenant_id, conversation_id, search_type
             )
-        except ValueError:
+        except ConversationNotFoundError:
             yield {"type": "error", "message": "Conversation not found"}
             return
 

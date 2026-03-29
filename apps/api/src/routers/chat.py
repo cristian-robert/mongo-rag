@@ -11,7 +11,7 @@ from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
 from src.core.tenant import get_tenant_id
 from src.models.api import ChatRequest, ChatResponse, WSMessage
-from src.services.chat import ChatService
+from src.services.chat import ChatService, ConversationNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +63,8 @@ async def chat_endpoint(
             conversation_id=body.conversation_id,
             search_type=body.search_type,
         )
-    except ValueError as e:
-        if "not found" in str(e).lower():
-            raise HTTPException(status_code=404, detail=str(e))
-        raise HTTPException(status_code=400, detail=str(e))
+    except ConversationNotFoundError:
+        raise HTTPException(status_code=404, detail="Conversation not found")
 
     return ChatResponse(
         answer=result["answer"],
@@ -101,7 +99,10 @@ async def chat_websocket(
             try:
                 data = json.loads(raw)
                 msg = WSMessage(**data)
-            except (json.JSONDecodeError, Exception) as e:
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "error", "message": "Invalid JSON"})
+                continue
+            except (ValueError, TypeError) as e:
                 logger.warning("WebSocket invalid message: %s", str(e))
                 await websocket.send_json({"type": "error", "message": "Invalid message format"})
                 continue

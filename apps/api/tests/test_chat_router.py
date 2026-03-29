@@ -85,7 +85,11 @@ def test_chat_conversation_not_found(app_client):
 
     with patch("src.routers.chat.ChatService") as mock_chat_cls:
         mock_chat = MagicMock()
-        mock_chat.handle_message = AsyncMock(side_effect=ValueError("Conversation not found"))
+        from src.services.chat import ConversationNotFoundError
+
+        mock_chat.handle_message = AsyncMock(
+            side_effect=ConversationNotFoundError("Conversation not found")
+        )
         mock_chat_cls.return_value = mock_chat
 
         response = client.post(

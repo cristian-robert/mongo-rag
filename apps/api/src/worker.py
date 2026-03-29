@@ -90,7 +90,7 @@ def ingest_document(
 
             config = IngestionConfig()
             pipeline = DocumentIngestionPipeline(config=config)
-            content, docling_doc = pipeline._read_document(temp_path)
+            content, docling_doc = pipeline.read_document(temp_path)
 
             if not content.strip():
                 await service.update_status(
@@ -122,7 +122,7 @@ def ingest_document(
             version = latest_version + 1
 
             # Extract title if not provided
-            resolved_title = title if title else pipeline._extract_title(content, temp_path)
+            resolved_title = title if title else pipeline.extract_title(content, temp_path)
 
             # Chunk document
             chunker = create_chunker(ChunkingConfig(max_tokens=config.max_tokens))
