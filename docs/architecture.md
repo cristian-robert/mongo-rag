@@ -283,6 +283,61 @@ For full control or lower cost at scale. MongoDB always runs on Atlas (Vector Se
 - Vercel: auto-connected to repo
 - Railway: auto-deploy from main branch
 
+## Environment Variable Strategy
+
+All configuration via environment variables, loaded through Pydantic Settings. Never hardcode secrets.
+
+### Backend (apps/api/.env)
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `MONGODB_URI` | Yes | — | Atlas connection string |
+| `MONGODB_DATABASE` | No | `rag_db` | Database name |
+| `LLM_API_KEY` | Yes | — | LLM provider API key |
+| `LLM_MODEL` | No | `anthropic/claude-haiku-4.5` | Model identifier |
+| `LLM_BASE_URL` | No | `https://openrouter.ai/api/v1` | OpenAI-compatible endpoint |
+| `EMBEDDING_API_KEY` | Yes | — | OpenAI API key for embeddings |
+| `EMBEDDING_MODEL` | No | `text-embedding-3-small` | Embedding model |
+| `STRIPE_SECRET_KEY` | Yes | — | Stripe API key |
+| `STRIPE_WEBHOOK_SECRET` | Yes | — | Stripe webhook signing secret |
+| `CORS_ORIGINS` | No | `http://localhost:3100` | Allowed CORS origins |
+
+### Frontend (apps/web/.env.local)
+
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `NEXT_PUBLIC_API_URL` | Yes | — | FastAPI backend URL |
+| `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Yes | — | Stripe public key |
+| `NEXTAUTH_SECRET` | Yes | — | NextAuth.js session secret |
+| `NEXTAUTH_URL` | No | `http://localhost:3100` | NextAuth.js base URL |
+
+### Conventions
+- Pydantic Settings validates on startup — missing required vars crash immediately with clear error
+- `.env.example` files in each app with dummy values
+- No secrets in `.env.example` — only structure and comments
+- Production secrets via Railway/Vercel environment variable UI
+
+## MongoDB Atlas Vector Search — Capabilities and Limitations
+
+### Capabilities
+- **Vector Search (`$vectorSearch`)** — Cosine, dot product, or Euclidean similarity on up to 4096-dimension embeddings
+- **Atlas Search (`$search`)** — Full-text search with fuzzy matching, autocomplete, facets
+- **Filter in vector search** — Pre-filter on indexed fields (e.g., `tenant_id`) before ANN retrieval
+- **Available on Free (M0)** — Vector Search works on all tiers including free
+- **No code deployment** — Index definitions via Atlas UI or Atlas CLI, not driver API
+
+### Limitations
+- **Index creation** — Vector and search indexes cannot be created programmatically via MongoDB driver. Must use Atlas UI, Atlas CLI, or Atlas Admin API.
+- **Free tier (M0)** — 512MB storage, ~100 ops/sec, 3 vector search indexes max, no continuous backup
+- **Flex tier** — 5GB storage, 500 ops/sec, no private endpoints, no `$rankFusion` operator
+- **`$rankFusion`** — Native RRF operator only available on M10+ dedicated clusters. Our implementation uses application-level RRF (from reference repo) which works on all tiers.
+- **Index updates** — Vector index changes require re-indexing. Plan embedding dimension changes carefully.
+- **numCandidates** — Must be set high enough for quality (we use `limit * 10`). Too low reduces recall; too high increases latency.
+- **No real-time indexing** — Small delay (seconds) between insert and searchability. Not an issue for document ingestion, but worth noting.
+
+### Our approach
+Use application-level RRF (coleam00's implementation) instead of `$rankFusion` so we work on Free and Flex tiers. Upgrade to `$rankFusion` only if we move to M10+ dedicated.
+
 ## What We Reuse from coleam00/MongoDB-RAG-Agent
 
 | Source File | Strategy | Adaptation |
