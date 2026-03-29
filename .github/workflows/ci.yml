@@ -24,7 +24,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-          cache-dependency-glob: "apps/api/uv.lock"
+          cache-dependency-glob: "apps/api/pyproject.toml"
 
       - uses: actions/setup-python@v5
         with:
@@ -48,7 +48,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-          cache-dependency-glob: "apps/api/uv.lock"
+          cache-dependency-glob: "apps/api/pyproject.toml"
 
       - uses: actions/setup-python@v5
         with:
@@ -69,7 +69,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-          cache-dependency-glob: "apps/api/uv.lock"
+          cache-dependency-glob: "apps/api/pyproject.toml"
 
       - uses: actions/setup-python@v5
         with:
