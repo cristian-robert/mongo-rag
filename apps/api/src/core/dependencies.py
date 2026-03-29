@@ -6,9 +6,11 @@ from typing import Any, Dict, Optional
 
 import openai
 from pymongo import AsyncMongoClient
+from pymongo.asynchronous.collection import AsyncCollection
+from pymongo.asynchronous.database import AsyncDatabase
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
-from src.core.settings import load_settings
+from src.core.settings import Settings, load_settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +21,9 @@ class AgentDependencies:
 
     # Core dependencies
     mongo_client: Optional[AsyncMongoClient] = None
-    db: Optional[Any] = None
+    db: Optional[AsyncDatabase] = None
     openai_client: Optional[openai.AsyncOpenAI] = None
-    settings: Optional[Any] = None
+    settings: Optional[Settings] = None
 
     # Session context
     session_id: Optional[str] = None
@@ -39,13 +41,19 @@ class AgentDependencies:
         """
         if not self.settings:
             self.settings = load_settings()
-            logger.info("settings_loaded", database=self.settings.mongodb_database)
+            logger.info("settings_loaded", extra={"database": self.settings.mongodb_database})
 
-        # Initialize MongoDB client
+        # Initialize MongoDB client with connection pooling
         if not self.mongo_client:
             try:
                 self.mongo_client = AsyncMongoClient(
-                    self.settings.mongodb_uri, serverSelectionTimeoutMS=5000
+                    self.settings.mongodb_uri,
+                    serverSelectionTimeoutMS=5000,
+                    maxPoolSize=10,
+                    minPoolSize=1,
+                    maxIdleTimeMS=30000,
+                    retryWrites=True,
+                    retryReads=True,
                 )
                 self.db = self.mongo_client[self.settings.mongodb_database]
 
@@ -53,14 +61,10 @@ class AgentDependencies:
                 await self.mongo_client.admin.command("ping")
                 logger.info(
                     "mongodb_connected",
-                    database=self.settings.mongodb_database,
-                    collections={
-                        "documents": self.settings.mongodb_collection_documents,
-                        "chunks": self.settings.mongodb_collection_chunks,
-                    },
+                    extra={"database": self.settings.mongodb_database},
                 )
             except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-                logger.exception("mongodb_connection_failed", error=str(e))
+                logger.exception("mongodb_connection_failed", extra={"error": str(e)})
                 raise
 
         # Initialize OpenAI client for embeddings
@@ -71,9 +75,49 @@ class AgentDependencies:
             )
             logger.info(
                 "openai_client_initialized",
-                model=self.settings.embedding_model,
-                dimension=self.settings.embedding_dimension,
+                extra={
+                    "model": self.settings.embedding_model,
+                    "dimension": self.settings.embedding_dimension,
+                },
             )
+
+    # -- Collection accessors --
+
+    def _get_collection(self, name: str) -> AsyncCollection:
+        """Get a MongoDB collection by name. Requires initialize() first."""
+        if not self.db:
+            raise RuntimeError("Dependencies not initialized. Call initialize() first.")
+        return self.db[name]
+
+    @property
+    def chunks_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_chunks)
+
+    @property
+    def documents_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_documents)
+
+    @property
+    def tenants_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_tenants)
+
+    @property
+    def users_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_users)
+
+    @property
+    def conversations_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_conversations)
+
+    @property
+    def api_keys_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_api_keys)
+
+    @property
+    def subscriptions_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_subscriptions)
+
+    # -- Core methods --
 
     async def cleanup(self) -> None:
         """Clean up external connections."""

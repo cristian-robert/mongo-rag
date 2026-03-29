@@ -40,6 +40,27 @@ class Settings(BaseSettings):
         description="Full-text search index name (must be created in Atlas UI)",
     )
 
+    # SaaS Collection Names
+    mongodb_collection_tenants: str = Field(
+        default="tenants", description="Collection for tenant accounts"
+    )
+
+    mongodb_collection_users: str = Field(
+        default="users", description="Collection for user accounts"
+    )
+
+    mongodb_collection_conversations: str = Field(
+        default="conversations", description="Collection for chat conversations"
+    )
+
+    mongodb_collection_api_keys: str = Field(
+        default="api_keys", description="Collection for API keys"
+    )
+
+    mongodb_collection_subscriptions: str = Field(
+        default="subscriptions", description="Collection for billing subscriptions"
+    )
+
     # LLM Configuration (OpenAI-compatible)
     llm_provider: str = Field(
         default="openrouter",
