@@ -15,6 +15,7 @@ from pymongo import AsyncMongoClient
 from pymongo.errors import ConnectionFailure
 
 from src.core.settings import load_settings
+from src.models.document import ChunkModel
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -97,15 +98,25 @@ SEED_DOCUMENT = {
 }
 
 # Chunks use zero-vectors since we can't call the embedding API in a seed script
+_CHUNK_0_CONTENT = (
+    "MongoRAG is a multi-tenant AI chatbot SaaS powered by RAG. "
+    "Customers sign up, upload documents, and get an embeddable chat widget."
+)
+_CHUNK_1_CONTENT = (
+    "Features include uploading documents for AI-powered answers, "
+    "an embeddable chat widget for any website, and hybrid search "
+    "combining semantic and text search."
+)
+_SEED_SOURCE = "seed://getting-started.md"
+
 SEED_CHUNKS = [
     {
         "tenant_id": SEED_TENANT_ID,
         "document_id": "will-be-set",
-        "chunk_id": _hash("seed://getting-started.md|1|0|chunk0"),
-        "content": (
-            "MongoRAG is a multi-tenant AI chatbot SaaS powered by RAG. "
-            "Customers sign up, upload documents, and get an embeddable chat widget."
+        "chunk_id": ChunkModel.generate_chunk_id(
+            _SEED_SOURCE, 1, 0, _CHUNK_0_CONTENT
         ),
+        "content": _CHUNK_0_CONTENT,
         "embedding": [0.0] * 1536,
         "chunk_index": 0,
         "heading_path": ["Getting Started with MongoRAG"],
@@ -119,12 +130,10 @@ SEED_CHUNKS = [
     {
         "tenant_id": SEED_TENANT_ID,
         "document_id": "will-be-set",
-        "chunk_id": _hash("seed://getting-started.md|1|1|chunk1"),
-        "content": (
-            "Features include uploading documents for AI-powered answers, "
-            "an embeddable chat widget for any website, and hybrid search "
-            "combining semantic and text search."
+        "chunk_id": ChunkModel.generate_chunk_id(
+            _SEED_SOURCE, 1, 1, _CHUNK_1_CONTENT
         ),
+        "content": _CHUNK_1_CONTENT,
         "embedding": [0.0] * 1536,
         "chunk_index": 1,
         "heading_path": ["Getting Started with MongoRAG", "Features"],
@@ -178,56 +187,74 @@ async def seed() -> None:
     client = AsyncMongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
 
     try:
-        await client.admin.command("ping")
-        logger.info("Connected to MongoDB Atlas")
-    except ConnectionFailure as e:
-        logger.error("Failed to connect: %s", e)
-        return
+        try:
+            await client.admin.command("ping")
+            logger.info("Connected to MongoDB Atlas")
+        except ConnectionFailure as e:
+            logger.error("Failed to connect: %s", e)
+            return
 
-    db = client[settings.mongodb_database]
+        db = client[settings.mongodb_database]
 
-    # Clean existing seed data
-    for coll_name in [
-        settings.mongodb_collection_tenants,
-        settings.mongodb_collection_users,
-        settings.mongodb_collection_api_keys,
-        settings.mongodb_collection_documents,
-        settings.mongodb_collection_chunks,
-        settings.mongodb_collection_subscriptions,
-        settings.mongodb_collection_conversations,
-    ]:
-        result = await db[coll_name].delete_many({"tenant_id": SEED_TENANT_ID})
-        if result.deleted_count > 0:
-            logger.info("  Cleaned %d docs from %s", result.deleted_count, coll_name)
+        # Clean existing seed data
+        for coll_name in [
+            settings.mongodb_collection_tenants,
+            settings.mongodb_collection_users,
+            settings.mongodb_collection_api_keys,
+            settings.mongodb_collection_documents,
+            settings.mongodb_collection_chunks,
+            settings.mongodb_collection_subscriptions,
+            settings.mongodb_collection_conversations,
+        ]:
+            result = await db[coll_name].delete_many(
+                {"tenant_id": SEED_TENANT_ID}
+            )
+            if result.deleted_count > 0:
+                logger.info(
+                    "  Cleaned %d docs from %s",
+                    result.deleted_count,
+                    coll_name,
+                )
 
-    # Insert seed data
-    await db[settings.mongodb_collection_tenants].insert_one(SEED_TENANT)
-    logger.info("  Seeded tenant: %s", SEED_TENANT["name"])
+        # Insert seed data
+        await db[settings.mongodb_collection_tenants].insert_one(SEED_TENANT)
+        logger.info("  Seeded tenant: %s", SEED_TENANT["name"])
 
-    await db[settings.mongodb_collection_users].insert_one(SEED_USER)
-    logger.info("  Seeded user: %s", SEED_USER["email"])
+        await db[settings.mongodb_collection_users].insert_one(SEED_USER)
+        logger.info("  Seeded user: %s", SEED_USER["email"])
 
-    await db[settings.mongodb_collection_api_keys].insert_one(SEED_API_KEY)
-    logger.info("  Seeded API key: %s...", SEED_API_KEY["key_prefix"])
+        await db[settings.mongodb_collection_api_keys].insert_one(SEED_API_KEY)
+        logger.info("  Seeded API key: %s...", SEED_API_KEY["key_prefix"])
 
-    doc_result = await db[settings.mongodb_collection_documents].insert_one(SEED_DOCUMENT)
-    doc_id = str(doc_result.inserted_id)
-    logger.info("  Seeded document: %s (id=%s)", SEED_DOCUMENT["title"], doc_id)
+        doc_result = await db[
+            settings.mongodb_collection_documents
+        ].insert_one(SEED_DOCUMENT)
+        doc_id = str(doc_result.inserted_id)
+        logger.info(
+            "  Seeded document: %s (id=%s)", SEED_DOCUMENT["title"], doc_id
+        )
 
-    for chunk in SEED_CHUNKS:
-        chunk["document_id"] = doc_id
-    await db[settings.mongodb_collection_chunks].insert_many(SEED_CHUNKS)
-    logger.info("  Seeded %d chunks", len(SEED_CHUNKS))
+        for chunk in SEED_CHUNKS:
+            chunk["document_id"] = doc_id
+        await db[settings.mongodb_collection_chunks].insert_many(SEED_CHUNKS)
+        logger.info("  Seeded %d chunks", len(SEED_CHUNKS))
 
-    await db[settings.mongodb_collection_subscriptions].insert_one(SEED_SUBSCRIPTION)
-    logger.info("  Seeded subscription")
+        await db[
+            settings.mongodb_collection_subscriptions
+        ].insert_one(SEED_SUBSCRIPTION)
+        logger.info("  Seeded subscription")
 
-    await db[settings.mongodb_collection_conversations].insert_one(SEED_CONVERSATION)
-    logger.info("  Seeded conversation")
+        await db[
+            settings.mongodb_collection_conversations
+        ].insert_one(SEED_CONVERSATION)
+        logger.info("  Seeded conversation")
 
-    await client.close()
-    logger.info("Seed complete!")
-    logger.info("  Dev API key: %s", SEED_API_KEY_RAW)
+        logger.info("Seed complete!")
+        logger.info(
+            "  Dev API key prefix: %s...", SEED_API_KEY["key_prefix"]
+        )
+    finally:
+        await client.close()
 
 
 def main() -> None:

@@ -5,9 +5,10 @@ Usage:
     cd apps/api
     uv run python -m scripts.setup_indexes
 
-NOTE: Atlas Vector Search and Atlas Search indexes CANNOT be created programmatically
-on Free/Flex tiers. You must create them via the Atlas UI. This script handles all
-standard compound and single-field indexes.
+NOTE: Atlas Vector Search and Atlas Search indexes can be created programmatically
+via createSearchIndexes / Atlas Admin API / Atlas CLI, but are easier to manage
+through the Atlas UI. This script handles all standard compound and single-field
+indexes only.
 
 Atlas UI index definitions are documented at the bottom of this file.
 """
@@ -35,71 +36,87 @@ async def create_indexes() -> None:
     )
 
     try:
-        await client.admin.command("ping")
-        logger.info("Connected to MongoDB Atlas")
-    except ConnectionFailure as e:
-        logger.error("Failed to connect to MongoDB: %s", e)
-        return
+        try:
+            await client.admin.command("ping")
+            logger.info("Connected to MongoDB Atlas")
+        except ConnectionFailure as e:
+            logger.error("Failed to connect to MongoDB: %s", e)
+            return
 
-    db = client[settings.mongodb_database]
+        db = client[settings.mongodb_database]
 
-    # -- chunks collection --
-    c = db[settings.mongodb_collection_chunks]
-    await _create_index(c, "chunks", [("tenant_id", ASC), ("document_id", ASC)])
-    await _create_index(
-        c, "chunks", [("tenant_id", ASC), ("chunk_id", ASC)], unique=True
-    )
-    await _create_index(c, "chunks", [("tenant_id", ASC), ("created_at", DESC)])
-    await _create_index(c, "chunks", [("chunk_id", ASC)], unique=True)
+        # -- chunks collection --
+        c = db[settings.mongodb_collection_chunks]
+        await _create_index(
+            c, "chunks", [("tenant_id", ASC), ("document_id", ASC)]
+        )
+        await _create_index(
+            c, "chunks", [("tenant_id", ASC), ("chunk_id", ASC)], unique=True
+        )
+        await _create_index(
+            c, "chunks", [("tenant_id", ASC), ("created_at", DESC)]
+        )
+        await _create_index(c, "chunks", [("chunk_id", ASC)])
 
-    # -- documents collection --
-    d = db[settings.mongodb_collection_documents]
-    await _create_index(d, "documents", [("tenant_id", ASC), ("source", ASC)])
-    await _create_index(
-        d, "documents", [("tenant_id", ASC), ("content_hash", ASC)]
-    )
-    await _create_index(
-        d, "documents", [("tenant_id", ASC), ("created_at", DESC)]
-    )
-    await _create_index(d, "documents", [("tenant_id", ASC), ("version", ASC)])
+        # -- documents collection --
+        d = db[settings.mongodb_collection_documents]
+        await _create_index(
+            d, "documents", [("tenant_id", ASC), ("source", ASC)]
+        )
+        await _create_index(
+            d, "documents", [("tenant_id", ASC), ("content_hash", ASC)]
+        )
+        await _create_index(
+            d, "documents", [("tenant_id", ASC), ("created_at", DESC)]
+        )
+        await _create_index(
+            d, "documents", [("tenant_id", ASC), ("version", ASC)]
+        )
 
-    # -- tenants collection --
-    t = db[settings.mongodb_collection_tenants]
-    await _create_index(t, "tenants", [("tenant_id", ASC)], unique=True)
-    await _create_index(t, "tenants", [("slug", ASC)], unique=True)
+        # -- tenants collection --
+        t = db[settings.mongodb_collection_tenants]
+        await _create_index(t, "tenants", [("tenant_id", ASC)], unique=True)
+        await _create_index(t, "tenants", [("slug", ASC)], unique=True)
 
-    # -- users collection --
-    u = db[settings.mongodb_collection_users]
-    await _create_index(
-        u, "users", [("tenant_id", ASC), ("email", ASC)], unique=True
-    )
-    await _create_index(u, "users", [("email", ASC)])
+        # -- users collection --
+        u = db[settings.mongodb_collection_users]
+        await _create_index(
+            u, "users", [("tenant_id", ASC), ("email", ASC)], unique=True
+        )
+        await _create_index(u, "users", [("email", ASC)])
 
-    # -- conversations collection --
-    cv = db[settings.mongodb_collection_conversations]
-    await _create_index(
-        cv, "conversations", [("tenant_id", ASC), ("session_id", ASC)]
-    )
-    await _create_index(
-        cv, "conversations", [("tenant_id", ASC), ("created_at", DESC)]
-    )
+        # -- conversations collection --
+        cv = db[settings.mongodb_collection_conversations]
+        await _create_index(
+            cv, "conversations", [("tenant_id", ASC), ("session_id", ASC)]
+        )
+        await _create_index(
+            cv, "conversations", [("tenant_id", ASC), ("created_at", DESC)]
+        )
 
-    # -- api_keys collection --
-    ak = db[settings.mongodb_collection_api_keys]
-    await _create_index(ak, "api_keys", [("key_hash", ASC)], unique=True)
-    await _create_index(ak, "api_keys", [("tenant_id", ASC)])
-    await _create_index(ak, "api_keys", [("key_prefix", ASC)])
+        # -- api_keys collection --
+        ak = db[settings.mongodb_collection_api_keys]
+        await _create_index(
+            ak, "api_keys", [("key_hash", ASC)], unique=True
+        )
+        await _create_index(ak, "api_keys", [("tenant_id", ASC)])
+        await _create_index(ak, "api_keys", [("key_prefix", ASC)])
 
-    # -- subscriptions collection --
-    s = db[settings.mongodb_collection_subscriptions]
-    await _create_index(s, "subscriptions", [("tenant_id", ASC)], unique=True)
-    await _create_index(s, "subscriptions", [("stripe_customer_id", ASC)])
-    await _create_index(
-        s, "subscriptions", [("stripe_subscription_id", ASC)]
-    )
+        # -- subscriptions collection --
+        s = db[settings.mongodb_collection_subscriptions]
+        await _create_index(
+            s, "subscriptions", [("tenant_id", ASC)], unique=True
+        )
+        await _create_index(
+            s, "subscriptions", [("stripe_customer_id", ASC)]
+        )
+        await _create_index(
+            s, "subscriptions", [("stripe_subscription_id", ASC)]
+        )
 
-    await client.close()
-    logger.info("All indexes created successfully")
+        logger.info("All indexes created successfully")
+    finally:
+        await client.close()
 
 
 async def _create_index(

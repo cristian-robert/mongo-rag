@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # MongoDB Configuration
     mongodb_uri: str = Field(..., description="MongoDB Atlas connection string")
 
-    mongodb_database: str = Field(default="rag_db", description="MongoDB database name")
+    mongodb_database: str = Field(default="mongorag", description="MongoDB database name")
 
     mongodb_collection_documents: str = Field(
         default="documents", description="Collection for source documents"
