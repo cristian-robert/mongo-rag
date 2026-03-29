@@ -108,6 +108,19 @@ class Settings(BaseSettings):
         default=0.3, description="Default text weight for hybrid search (0-1)"
     )
 
+    # Redis / Celery Configuration
+    redis_url: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis URL for Celery broker and result backend",
+    )
+
+    # Upload Configuration
+    max_upload_size_mb: int = Field(default=50, description="Maximum file upload size in MB")
+
+    upload_temp_dir: str = Field(
+        default="/tmp/mongorag-uploads", description="Temporary directory for uploaded files"
+    )
+
 
 def load_settings() -> Settings:
     """Load settings with proper error handling."""

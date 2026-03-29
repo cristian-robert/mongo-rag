@@ -18,6 +18,9 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "aiofiles>=24.1.0",
     "openai-whisper>=20240930",
+    "celery[redis]>=5.4.0",
+    "redis>=5.0.0",
+    "python-multipart>=0.0.9",
 ]
 
 [build-system]
