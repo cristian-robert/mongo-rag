@@ -111,7 +111,7 @@ class IngestionService:
         tenant_id: str,
         source: str,
         content_hash: str,
-    ) -> Optional[str]:
+    ) -> Optional[dict[str, Any]]:
         """Check if a document with the same content already exists.
 
         Args:
@@ -120,7 +120,7 @@ class IngestionService:
             content_hash: SHA256 hash of document content.
 
         Returns:
-            Existing document ID if duplicate found, None otherwise.
+            Existing document dict if duplicate found, None otherwise.
         """
         existing = await self.documents.find_one(
             {
@@ -128,11 +128,10 @@ class IngestionService:
                 "source": source,
                 "content_hash": content_hash,
                 "status": DocumentStatus.READY,
-            }
+            },
+            projection={"_id": 1, "chunk_count": 1, "version": 1},
         )
-        if existing:
-            return existing["_id"]
-        return None
+        return existing
 
     async def get_latest_version(self, tenant_id: str, source: str) -> int:
         """Get the latest version number for a document source.
@@ -197,6 +196,7 @@ class IngestionService:
 
             chunk_dicts.append(
                 {
+                    "_id": chunk_id,
                     "tenant_id": tenant_id,
                     "document_id": document_id,
                     "chunk_id": chunk_id,

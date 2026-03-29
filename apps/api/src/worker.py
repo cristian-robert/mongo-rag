@@ -105,17 +105,27 @@ def ingest_document(
             content_hash = DocumentModel.hash_content(content)
 
             # Check for duplicate
-            existing = await service.check_duplicate(tenant_id, source, content_hash)
-            if existing:
+            existing_doc = await service.check_duplicate(tenant_id, source, content_hash)
+            if existing_doc:
+                # Delete the new pending document — reuse existing
                 await service.update_status(
                     document_id,
                     tenant_id,
-                    DocumentStatus.READY,
-                    content_hash=content_hash,
-                    content=content,
+                    DocumentStatus.FAILED,
+                    error_message="Duplicate of existing document",
                 )
-                task_logger.info("Duplicate detected for %s, marking ready", document_id)
-                return {"document_id": document_id, "status": "ready", "chunk_count": 0}
+                existing_id = str(existing_doc["_id"])
+                existing_chunks = existing_doc.get("chunk_count", 0)
+                task_logger.info(
+                    "Duplicate detected for %s, reusing existing %s",
+                    document_id,
+                    existing_id,
+                )
+                return {
+                    "document_id": existing_id,
+                    "status": "ready",
+                    "chunk_count": existing_chunks,
+                }
 
             # Determine version
             latest_version = await service.get_latest_version(tenant_id, source)

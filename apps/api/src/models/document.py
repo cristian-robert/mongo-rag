@@ -29,7 +29,7 @@ class DocumentModel(BaseModel):
     etag_or_commit: Optional[str] = Field(
         default=None, description="ETag or git commit for change detection"
     )
-    status: str = Field(default=DocumentStatus.PENDING, description="Processing status")
+    status: DocumentStatus = Field(default=DocumentStatus.PENDING, description="Processing status")
     error_message: Optional[str] = Field(
         default=None, description="Error details if status is failed"
     )

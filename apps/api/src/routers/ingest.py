@@ -103,6 +103,8 @@ async def ingest_document_endpoint(
             meta = json.loads(metadata)
         except json.JSONDecodeError:
             raise HTTPException(status_code=422, detail="Invalid metadata JSON")
+        if not isinstance(meta, dict):
+            raise HTTPException(status_code=422, detail="Metadata must be a JSON object")
 
     service = IngestionService(
         documents_collection=deps.documents_collection,
@@ -128,6 +130,9 @@ async def ingest_document_endpoint(
     max_bytes = settings.max_upload_size_mb * 1024 * 1024
     if actual_size > max_bytes:
         shutil.rmtree(temp_dir, ignore_errors=True)
+        await service.update_status(
+            str(document_id), tenant_id, "failed", error_message="File too large"
+        )
         raise HTTPException(
             status_code=413,
             detail=f"File too large. Maximum size: {settings.max_upload_size_mb}MB",
@@ -143,8 +148,11 @@ async def ingest_document_endpoint(
             metadata=meta,
         )
     except Exception:
-        # Clean up temp file if Celery dispatch fails
+        # Clean up temp file and mark doc failed if Celery dispatch fails
         shutil.rmtree(temp_dir, ignore_errors=True)
+        await service.update_status(
+            str(document_id), tenant_id, "failed", error_message="Task queue unavailable"
+        )
         logger.exception("Failed to dispatch ingestion task for doc=%s", document_id)
         raise HTTPException(status_code=503, detail="Task queue unavailable")
 
