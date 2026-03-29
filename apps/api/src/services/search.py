@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 async def semantic_search(
-    ctx: RunContext[AgentDependencies], query: str, match_count: Optional[int] = None
+    ctx: RunContext[AgentDependencies], query: str, tenant_id: str, match_count: Optional[int] = None
 ) -> List[SearchResult]:
     """
     Perform pure semantic search using MongoDB vector similarity.
@@ -52,6 +52,7 @@ async def semantic_search(
                     "path": "embedding",
                     "numCandidates": 100,  # Search space (10x limit is good default)
                     "limit": match_count,
+                    "filter": {"tenant_id": tenant_id},
                 }
             },
             {
@@ -115,7 +116,7 @@ async def semantic_search(
 
 
 async def text_search(
-    ctx: RunContext[AgentDependencies], query: str, match_count: Optional[int] = None
+    ctx: RunContext[AgentDependencies], query: str, tenant_id: str, match_count: Optional[int] = None
 ) -> List[SearchResult]:
     """
     Perform full-text search using MongoDB Atlas Search.
@@ -149,10 +150,19 @@ async def text_search(
             {
                 "$search": {
                     "index": deps.settings.mongodb_text_index,
-                    "text": {
-                        "query": query,
-                        "path": "content",
-                        "fuzzy": {"maxEdits": 2, "prefixLength": 3},
+                    "compound": {
+                        "must": [
+                            {
+                                "text": {
+                                    "query": query,
+                                    "path": "content",
+                                    "fuzzy": {"maxEdits": 2, "prefixLength": 3},
+                                }
+                            }
+                        ],
+                        "filter": [
+                            {"equals": {"path": "tenant_id", "value": tenant_id}}
+                        ],
                     },
                 }
             },
@@ -295,6 +305,7 @@ def reciprocal_rank_fusion(
 async def hybrid_search(
     ctx: RunContext[AgentDependencies],
     query: str,
+    tenant_id: str,
     match_count: Optional[int] = None,
     text_weight: Optional[float] = None,
 ) -> List[SearchResult]:
@@ -336,8 +347,8 @@ async def hybrid_search(
 
         # Run both searches concurrently for performance
         semantic_results, text_results = await asyncio.gather(
-            semantic_search(ctx, query, fetch_count),
-            text_search(ctx, query, fetch_count),
+            semantic_search(ctx, query, tenant_id, fetch_count),
+            text_search(ctx, query, tenant_id, fetch_count),
             return_exceptions=True,  # Don't fail if one search errors
         )
 
@@ -376,6 +387,6 @@ async def hybrid_search(
         # Graceful degradation: try semantic-only as last resort
         try:
             logger.info("Falling back to semantic search only")
-            return await semantic_search(ctx, query, match_count)
+            return await semantic_search(ctx, query, tenant_id, match_count)
         except Exception:
             return []
