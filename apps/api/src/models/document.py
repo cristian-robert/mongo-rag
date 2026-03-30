@@ -2,9 +2,19 @@
 
 import hashlib
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel, Field, computed_field
+
+
+class DocumentStatus(str, Enum):
+    """Document processing status."""
+
+    PENDING = "pending"
+    PROCESSING = "processing"
+    READY = "ready"
+    FAILED = "failed"
 
 
 class DocumentModel(BaseModel):
@@ -19,6 +29,11 @@ class DocumentModel(BaseModel):
     etag_or_commit: Optional[str] = Field(
         default=None, description="ETag or git commit for change detection"
     )
+    status: DocumentStatus = Field(default=DocumentStatus.PENDING, description="Processing status")
+    error_message: Optional[str] = Field(
+        default=None, description="Error details if status is failed"
+    )
+    chunk_count: int = Field(default=0, description="Number of chunks created")
     metadata: dict = Field(default_factory=dict, description="Source-specific metadata")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -51,9 +66,7 @@ class ChunkModel(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @staticmethod
-    def generate_chunk_id(
-        source_uri: str, version: int, chunk_index: int, chunk_text: str
-    ) -> str:
+    def generate_chunk_id(source_uri: str, version: int, chunk_index: int, chunk_text: str) -> str:
         """Generate a stable chunk ID for idempotent upserts.
 
         chunk_id = SHA256(source_uri + version + chunk_index + chunk_text_hash)

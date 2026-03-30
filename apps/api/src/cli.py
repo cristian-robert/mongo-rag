@@ -5,6 +5,7 @@ import asyncio
 from typing import List
 
 from dotenv import load_dotenv
+from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai.ag_ui import StateDeps
 from pydantic_ai.messages import PartDeltaEvent, PartStartEvent, TextPartDelta
@@ -13,9 +14,17 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 
 from src.core.settings import load_settings
+from src.services.agent import create_rag_agent
 
-# Import our agent and dependencies
-from src.services.agent import RAGState, rag_agent
+
+class RAGState(BaseModel):
+    """Minimal shared state for the CLI agent."""
+
+    pass
+
+
+# Create agent for CLI use
+rag_agent = create_rag_agent()
 
 # Load environment variables
 load_dotenv(override=True)
