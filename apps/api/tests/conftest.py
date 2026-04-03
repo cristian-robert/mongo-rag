@@ -1,5 +1,11 @@
 """Shared test fixtures."""
 
+import os
+
+# Set required env var defaults BEFORE any app imports trigger Settings loading
+os.environ.setdefault("NEXTAUTH_SECRET", "test-secret-for-unit-tests-minimum-32chars")
+os.environ.setdefault("RESEND_API_KEY", "re_test_placeholder")
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest

@@ -121,6 +121,25 @@ class Settings(BaseSettings):
         default="/tmp/mongorag-uploads", description="Temporary directory for uploaded files"
     )
 
+    # Auth Configuration
+    nextauth_secret: str = Field(
+        ..., description="Shared secret for JWT signing (same as NEXTAUTH_SECRET in frontend)"
+    )
+
+    resend_api_key: str = Field(
+        ..., description="Resend API key for transactional emails"
+    )
+
+    app_url: str = Field(
+        default="http://localhost:3100",
+        description="Frontend app URL (used in password reset email links)",
+    )
+
+    reset_email_from: str = Field(
+        default="noreply@mongorag.com",
+        description="From address for password reset emails",
+    )
+
 
 def load_settings() -> Settings:
     """Load settings with proper error handling."""
