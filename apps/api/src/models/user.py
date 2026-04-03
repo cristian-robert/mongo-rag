@@ -24,6 +24,7 @@ class UserModel(BaseModel):
     name: str = Field(default="", description="Display name")
     role: UserRole = Field(default=UserRole.MEMBER, description="Role within tenant")
     is_active: bool = Field(default=True, description="Whether the account is active")
+    email_verified: bool = Field(default=False, description="Whether email has been verified")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -41,4 +42,14 @@ class ApiKeyModel(BaseModel):
     )
     is_revoked: bool = Field(default=False, description="Whether the key has been revoked")
     last_used_at: Optional[datetime] = Field(default=None, description="Last usage timestamp")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class PasswordResetTokenModel(BaseModel):
+    """A password reset token (stored as SHA256 hash)."""
+
+    user_id: str = Field(..., description="User this token belongs to")
+    token_hash: str = Field(..., description="SHA256 hash of the reset token")
+    expires_at: datetime = Field(..., description="Token expiry time")
+    used: bool = Field(default=False, description="Whether the token has been consumed")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

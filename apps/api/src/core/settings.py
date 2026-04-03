@@ -61,6 +61,11 @@ class Settings(BaseSettings):
         default="subscriptions", description="Collection for billing subscriptions"
     )
 
+    mongodb_collection_reset_tokens: str = Field(
+        default="password_reset_tokens",
+        description="Collection for password reset tokens",
+    )
+
     # LLM Configuration (OpenAI-compatible)
     llm_provider: str = Field(
         default="openrouter",
@@ -119,6 +124,26 @@ class Settings(BaseSettings):
 
     upload_temp_dir: str = Field(
         default="/tmp/mongorag-uploads", description="Temporary directory for uploaded files"
+    )
+
+    # Auth Configuration
+    nextauth_secret: str = Field(
+        ..., description="Shared secret for JWT signing (same as NEXTAUTH_SECRET in frontend)"
+    )
+
+    resend_api_key: Optional[str] = Field(
+        default=None,
+        description="Resend API key for transactional emails (required for password reset)",
+    )
+
+    app_url: str = Field(
+        default="http://localhost:3100",
+        description="Frontend app URL (used in password reset email links)",
+    )
+
+    reset_email_from: str = Field(
+        default="noreply@mongorag.com",
+        description="From address for password reset emails",
     )
 
 

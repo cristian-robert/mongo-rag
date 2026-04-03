@@ -1,9 +1,30 @@
 """Shared test fixtures."""
 
+import os
+
+# Set required env var defaults BEFORE any app imports trigger Settings loading
+os.environ.setdefault("NEXTAUTH_SECRET", "test-secret-for-unit-tests-minimum-32chars")
+os.environ.setdefault("RESEND_API_KEY", "re_test_placeholder")
+
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
+from jose import jwt
+
+JWT_SECRET = "test-secret-for-unit-tests-minimum-32chars"
+
+MOCK_TENANT_ID = "test-tenant-001"
+
+
+def make_auth_header(tenant_id: str = MOCK_TENANT_ID) -> dict:
+    """Create Authorization header with JWT containing tenant_id."""
+    token = jwt.encode(
+        {"sub": "test-user", "tenant_id": tenant_id, "role": "owner"},
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
@@ -29,6 +50,3 @@ def client(mock_deps):
     with TestClient(app) as c:
         app.state.deps = mock_deps  # Override after lifespan runs
         yield c
-
-
-MOCK_TENANT_ID = "test-tenant-001"

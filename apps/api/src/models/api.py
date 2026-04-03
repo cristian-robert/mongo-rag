@@ -2,7 +2,7 @@
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 # --- Ingestion ---
 
@@ -63,3 +63,60 @@ class WSMessage(BaseModel):
     type: str = Field(..., description="Message type: message, cancel")
     content: Optional[str] = Field(default=None, description="Message content")
     conversation_id: Optional[str] = Field(default=None, description="Conversation ID")
+
+
+# --- Auth ---
+
+
+class SignupRequest(BaseModel):
+    """Request body for user signup."""
+
+    email: EmailStr = Field(..., description="User email address")
+    password: str = Field(..., min_length=8, max_length=128, description="Password")
+    organization_name: str = Field(
+        ..., min_length=2, max_length=100, description="Organization name"
+    )
+
+
+class SignupResponse(BaseModel):
+    """Response from signup endpoint."""
+
+    user_id: str
+    tenant_id: str
+    email: str
+
+
+class LoginRequest(BaseModel):
+    """Request body for user login."""
+
+    email: EmailStr = Field(..., description="User email address")
+    password: str = Field(..., min_length=1, description="Password")
+
+
+class LoginResponse(BaseModel):
+    """Response from login endpoint (user data for Auth.js)."""
+
+    user_id: str
+    tenant_id: str
+    email: str
+    name: str
+    role: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Request body for forgot password."""
+
+    email: EmailStr = Field(..., description="User email address")
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request body for password reset."""
+
+    token: str = Field(..., min_length=1, description="Reset token from email")
+    new_password: str = Field(..., min_length=8, max_length=128, description="New password")
+
+
+class MessageResponse(BaseModel):
+    """Generic message response."""
+
+    message: str

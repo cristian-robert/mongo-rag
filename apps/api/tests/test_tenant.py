@@ -1,15 +1,16 @@
-"""Tests for tenant dependency."""
+"""Tests for tenant dependency (JWT-based)."""
 
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
+from jose import jwt
 
-from tests.conftest import MOCK_TENANT_ID
+from tests.conftest import JWT_SECRET, MOCK_TENANT_ID
 
 
-@pytest.mark.unit
-def test_missing_tenant_header_returns_400():
-    """Request without X-Tenant-ID header returns 400."""
+@pytest.fixture
+def tenant_app():
+    """Create a test app with JWT tenant extraction."""
     from src.core.tenant import get_tenant_id
 
     app = FastAPI()
@@ -18,40 +19,32 @@ def test_missing_tenant_header_returns_400():
     async def test_endpoint(tenant_id: str = Depends(get_tenant_id)):
         return {"tenant_id": tenant_id}
 
-    client = TestClient(app)
-    response = client.get("/test")
-    assert response.status_code == 400
-    assert "X-Tenant-ID" in response.json()["detail"]
+    return TestClient(app)
 
 
 @pytest.mark.unit
-def test_valid_tenant_header_returns_tenant_id():
-    """Request with valid X-Tenant-ID header extracts tenant_id."""
-    from src.core.tenant import get_tenant_id
+def test_missing_auth_header_returns_401(tenant_app):
+    """Request without Authorization header returns 401."""
+    response = tenant_app.get("/test")
+    assert response.status_code == 401
+    assert "Authorization" in response.json()["detail"]
 
-    app = FastAPI()
 
-    @app.get("/test")
-    async def test_endpoint(tenant_id: str = Depends(get_tenant_id)):
-        return {"tenant_id": tenant_id}
-
-    client = TestClient(app)
-    response = client.get("/test", headers={"X-Tenant-ID": MOCK_TENANT_ID})
+@pytest.mark.unit
+def test_valid_jwt_returns_tenant_id(tenant_app):
+    """Request with valid JWT extracts tenant_id."""
+    token = jwt.encode(
+        {"sub": "user-1", "tenant_id": MOCK_TENANT_ID, "role": "owner"},
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+    response = tenant_app.get("/test", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     assert response.json()["tenant_id"] == MOCK_TENANT_ID
 
 
 @pytest.mark.unit
-def test_empty_tenant_header_returns_400():
-    """Request with empty X-Tenant-ID header returns 400."""
-    from src.core.tenant import get_tenant_id
-
-    app = FastAPI()
-
-    @app.get("/test")
-    async def test_endpoint(tenant_id: str = Depends(get_tenant_id)):
-        return {"tenant_id": tenant_id}
-
-    client = TestClient(app)
-    response = client.get("/test", headers={"X-Tenant-ID": ""})
-    assert response.status_code == 400
+def test_invalid_jwt_returns_401(tenant_app):
+    """Request with invalid JWT returns 401."""
+    response = tenant_app.get("/test", headers={"Authorization": "Bearer bad-token"})
+    assert response.status_code == 401

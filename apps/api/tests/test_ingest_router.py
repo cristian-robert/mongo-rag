@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-MOCK_TENANT_ID = "test-tenant-001"
+from tests.conftest import make_auth_header
 
 
 @pytest.fixture
@@ -34,15 +34,15 @@ def app_client():
 
 
 @pytest.mark.unit
-def test_ingest_missing_tenant_header(app_client):
-    """Ingest without X-Tenant-ID returns 400."""
+def test_ingest_missing_auth_header(app_client):
+    """Ingest without Authorization header returns 401."""
     client, _ = app_client
     file = io.BytesIO(b"test content")
     response = client.post(
         "/api/v1/documents/ingest",
         files={"file": ("test.txt", file, "text/plain")},
     )
-    assert response.status_code == 400
+    assert response.status_code == 401
 
 
 @pytest.mark.unit
@@ -53,7 +53,7 @@ def test_ingest_unsupported_format(app_client):
     response = client.post(
         "/api/v1/documents/ingest",
         files={"file": ("test.exe", file, "application/octet-stream")},
-        headers={"X-Tenant-ID": MOCK_TENANT_ID},
+        headers=make_auth_header(),
     )
     assert response.status_code == 422
 
@@ -81,7 +81,7 @@ def test_ingest_valid_file_returns_202(app_client):
         response = client.post(
             "/api/v1/documents/ingest",
             files={"file": ("test.md", file, "text/markdown")},
-            headers={"X-Tenant-ID": MOCK_TENANT_ID},
+            headers=make_auth_header(),
         )
 
         assert response.status_code == 202
@@ -111,7 +111,7 @@ def test_document_status_returns_status(app_client):
 
         response = client.get(
             "/api/v1/documents/doc-123/status",
-            headers={"X-Tenant-ID": MOCK_TENANT_ID},
+            headers=make_auth_header(),
         )
 
         assert response.status_code == 200
@@ -132,7 +132,7 @@ def test_document_status_not_found(app_client):
 
         response = client.get(
             "/api/v1/documents/nonexistent/status",
-            headers={"X-Tenant-ID": MOCK_TENANT_ID},
+            headers=make_auth_header(),
         )
 
         assert response.status_code == 404
