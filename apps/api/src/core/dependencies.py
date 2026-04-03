@@ -117,6 +117,10 @@ class AgentDependencies:
     def subscriptions_collection(self) -> AsyncCollection:
         return self._get_collection(self.settings.mongodb_collection_subscriptions)
 
+    @property
+    def reset_tokens_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_reset_tokens)
+
     # -- Core methods --
 
     async def cleanup(self) -> None:

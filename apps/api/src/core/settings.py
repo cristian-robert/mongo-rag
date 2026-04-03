@@ -61,6 +61,11 @@ class Settings(BaseSettings):
         default="subscriptions", description="Collection for billing subscriptions"
     )
 
+    mongodb_collection_reset_tokens: str = Field(
+        default="password_reset_tokens",
+        description="Collection for password reset tokens",
+    )
+
     # LLM Configuration (OpenAI-compatible)
     llm_provider: str = Field(
         default="openrouter",
