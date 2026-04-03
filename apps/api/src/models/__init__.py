@@ -4,7 +4,7 @@ from src.models.conversation import ChatMessage, ConversationModel, MessageRole
 from src.models.document import ChunkModel, DocumentModel
 from src.models.search import SearchResult
 from src.models.tenant import PlanTier, SubscriptionModel, TenantModel, TenantSettings
-from src.models.user import ApiKeyModel, UserModel, UserRole
+from src.models.user import ApiKeyModel, PasswordResetTokenModel, UserModel, UserRole
 
 __all__ = [
     "ChatMessage",
@@ -18,6 +18,7 @@ __all__ = [
     "TenantModel",
     "TenantSettings",
     "ApiKeyModel",
+    "PasswordResetTokenModel",
     "UserModel",
     "UserRole",
 ]
