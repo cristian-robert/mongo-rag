@@ -86,3 +86,38 @@ class APIKeyService:
             "permissions": permissions,
             "created_at": now,
         }
+
+    async def validate_key(self, raw_key: str) -> dict[str, Any] | None:
+        """Validate an API key and return tenant data.
+
+        Args:
+            raw_key: The full API key string (e.g., mrag_...).
+
+        Returns:
+            Dict with tenant_id, permissions, key_id if valid; None otherwise.
+        """
+        key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        doc = await self._api_keys.find_one({"key_hash": key_hash})
+
+        if not doc:
+            return None
+
+        if doc.get("is_revoked", False):
+            return None
+
+        return {
+            "tenant_id": doc["tenant_id"],
+            "permissions": doc["permissions"],
+            "key_id": str(doc["_id"]),
+        }
+
+    async def update_last_used(self, key_hash: str) -> None:
+        """Update the last_used_at timestamp for a key.
+
+        Args:
+            key_hash: SHA-256 hash of the API key.
+        """
+        await self._api_keys.update_one(
+            {"key_hash": key_hash},
+            {"$set": {"last_used_at": datetime.now(timezone.utc)}},
+        )
