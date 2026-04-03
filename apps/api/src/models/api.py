@@ -1,5 +1,6 @@
 """Request and response models for API endpoints."""
 
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
@@ -120,3 +121,44 @@ class MessageResponse(BaseModel):
     """Generic message response."""
 
     message: str
+
+
+# --- API Keys ---
+
+
+class CreateKeyRequest(BaseModel):
+    """Request body for creating an API key."""
+
+    name: str = Field(..., min_length=2, max_length=100, description="Human-readable key name")
+    permissions: list[str] = Field(
+        default_factory=lambda: ["chat", "search"],
+        description="Allowed operations",
+    )
+
+
+class CreateKeyResponse(BaseModel):
+    """Response from key creation (raw key shown once)."""
+
+    raw_key: str = Field(..., description="Full API key — shown only once")
+    key_prefix: str = Field(..., description="First 8 chars for identification")
+    name: str
+    permissions: list[str]
+    created_at: datetime
+
+
+class KeyResponse(BaseModel):
+    """A single API key's metadata (no raw key or hash)."""
+
+    id: str = Field(..., description="Key document ID")
+    key_prefix: str = Field(..., description="First 8 chars for identification")
+    name: str
+    permissions: list[str]
+    is_revoked: bool
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class KeyListResponse(BaseModel):
+    """List of API keys for a tenant."""
+
+    keys: list[KeyResponse]
