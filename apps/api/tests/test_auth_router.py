@@ -5,8 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import MOCK_TENANT_ID
-
 
 @pytest.fixture
 def auth_client(mock_deps):
@@ -26,8 +24,8 @@ def auth_client(mock_deps):
 @pytest.mark.unit
 def test_signup_success(auth_client, mock_deps):
     """POST /auth/signup creates tenant and user."""
-    with patch("src.routers.auth.AuthService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.auth.AuthService") as mock_service:
+        instance = mock_service.return_value
         instance.signup = AsyncMock(
             return_value={
                 "user_id": "user-123",
@@ -55,8 +53,8 @@ def test_signup_success(auth_client, mock_deps):
 @pytest.mark.unit
 def test_signup_duplicate_email(auth_client, mock_deps):
     """POST /auth/signup returns 409 for duplicate email."""
-    with patch("src.routers.auth.AuthService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.auth.AuthService") as mock_service:
+        instance = mock_service.return_value
         instance.signup = AsyncMock(side_effect=ValueError("Email is already registered"))
 
         response = auth_client.post(
@@ -103,8 +101,8 @@ def test_signup_short_password(auth_client):
 @pytest.mark.unit
 def test_login_success(auth_client, mock_deps):
     """POST /auth/login returns user data for valid credentials."""
-    with patch("src.routers.auth.AuthService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.auth.AuthService") as mock_service:
+        instance = mock_service.return_value
         instance.login = AsyncMock(
             return_value={
                 "user_id": "user-123",
@@ -130,8 +128,8 @@ def test_login_success(auth_client, mock_deps):
 @pytest.mark.unit
 def test_login_invalid_credentials(auth_client, mock_deps):
     """POST /auth/login returns 401 for wrong password."""
-    with patch("src.routers.auth.AuthService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.auth.AuthService") as mock_service:
+        instance = mock_service.return_value
         instance.login = AsyncMock(side_effect=ValueError("Invalid email or password"))
 
         response = auth_client.post(
@@ -146,8 +144,8 @@ def test_login_invalid_credentials(auth_client, mock_deps):
 @pytest.mark.unit
 def test_forgot_password_success(auth_client, mock_deps):
     """POST /auth/forgot-password returns 200 regardless of email existence."""
-    with patch("src.routers.auth.AuthService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.auth.AuthService") as mock_service:
+        instance = mock_service.return_value
         instance.create_password_reset_token = AsyncMock(return_value="raw-token-123")
 
         with patch("src.routers.auth._send_reset_email") as mock_send:
@@ -165,8 +163,8 @@ def test_forgot_password_success(auth_client, mock_deps):
 @pytest.mark.unit
 def test_forgot_password_unknown_email(auth_client, mock_deps):
     """POST /auth/forgot-password returns 200 even for unknown email."""
-    with patch("src.routers.auth.AuthService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.auth.AuthService") as mock_service:
+        instance = mock_service.return_value
         instance.create_password_reset_token = AsyncMock(return_value=None)
 
         response = auth_client.post(
@@ -181,8 +179,8 @@ def test_forgot_password_unknown_email(auth_client, mock_deps):
 @pytest.mark.unit
 def test_reset_password_success(auth_client, mock_deps):
     """POST /auth/reset-password returns 200 for valid token."""
-    with patch("src.routers.auth.AuthService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.auth.AuthService") as mock_service:
+        instance = mock_service.return_value
         instance.reset_password = AsyncMock(return_value=None)
 
         response = auth_client.post(
@@ -196,8 +194,8 @@ def test_reset_password_success(auth_client, mock_deps):
 @pytest.mark.unit
 def test_reset_password_invalid_token(auth_client, mock_deps):
     """POST /auth/reset-password returns 400 for invalid token."""
-    with patch("src.routers.auth.AuthService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.auth.AuthService") as mock_service:
+        instance = mock_service.return_value
         instance.reset_password = AsyncMock(
             side_effect=ValueError("Invalid or expired reset token")
         )
