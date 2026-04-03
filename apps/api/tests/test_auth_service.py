@@ -6,6 +6,9 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from bson import ObjectId
+
+MOCK_USER_OID = str(ObjectId())
 
 
 @pytest.fixture
@@ -247,7 +250,7 @@ async def test_reset_password_success(mock_collections):
 
     mock_collections["reset_tokens"].find_one.return_value = {
         "_id": "token-id",
-        "user_id": "user-id-123",
+        "user_id": MOCK_USER_OID,
         "token_hash": token_hash,
         "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
         "used": False,
@@ -261,10 +264,10 @@ async def test_reset_password_success(mock_collections):
 
     await service.reset_password(token=raw_token, new_password="newpassword123")
 
-    # Verify password was updated
+    # Verify password was updated with ObjectId filter
     mock_collections["users"].update_one.assert_called_once()
     update_call = mock_collections["users"].update_one.call_args
-    assert update_call[0][0] == {"_id": "user-id-123"}
+    assert update_call[0][0] == {"_id": ObjectId(MOCK_USER_OID)}
     assert update_call[0][1]["$set"]["hashed_password"].startswith("$2b$")
 
     # Verify token was marked as used
@@ -281,7 +284,7 @@ async def test_reset_password_expired_token(mock_collections):
 
     mock_collections["reset_tokens"].find_one.return_value = {
         "_id": "token-id",
-        "user_id": "user-id-123",
+        "user_id": MOCK_USER_OID,
         "token_hash": token_hash,
         "expires_at": datetime.now(timezone.utc) - timedelta(hours=1),
         "used": False,
@@ -307,7 +310,7 @@ async def test_reset_password_already_used_token(mock_collections):
 
     mock_collections["reset_tokens"].find_one.return_value = {
         "_id": "token-id",
-        "user_id": "user-id-123",
+        "user_id": MOCK_USER_OID,
         "token_hash": token_hash,
         "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
         "used": True,

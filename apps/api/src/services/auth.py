@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
+from bson import ObjectId
 from pymongo.asynchronous.collection import AsyncCollection
 
 from src.core.security import hash_password, verify_password
@@ -197,10 +198,10 @@ class AuthService:
         if token_doc["expires_at"] < datetime.now(timezone.utc):
             raise ValueError("Reset token has expired")
 
-        # Update the user's password
+        # Update the user's password (user_id stored as string, _id is ObjectId)
         new_hash = hash_password(new_password)
         await self._users.update_one(
-            {"_id": token_doc["user_id"]},
+            {"_id": ObjectId(token_doc["user_id"])},
             {"$set": {"hashed_password": new_hash, "updated_at": datetime.now(timezone.utc)}},
         )
 

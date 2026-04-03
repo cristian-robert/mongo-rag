@@ -1,5 +1,6 @@
 """Authentication endpoints: signup, login, password reset."""
 
+import asyncio
 import logging
 
 import resend
@@ -38,7 +39,8 @@ async def _send_reset_email(email: str, token: str, settings: Settings) -> None:
     reset_url = f"{settings.app_url}/reset-password?token={token}"
     try:
         resend.api_key = settings.resend_api_key
-        resend.Emails.send(
+        await asyncio.to_thread(
+            resend.Emails.send,
             {
                 "from": settings.reset_email_from,
                 "to": [email],
@@ -49,7 +51,7 @@ async def _send_reset_email(email: str, token: str, settings: Settings) -> None:
                     f"<p>This link expires in 1 hour.</p>"
                     f"<p>If you did not request this, ignore this email.</p>"
                 ),
-            }
+            },
         )
     except Exception:
         logger.exception("Failed to send reset email to %s", email)

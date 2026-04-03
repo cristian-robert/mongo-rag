@@ -47,31 +47,17 @@ async def create_indexes() -> None:
 
         # -- chunks collection --
         c = db[settings.mongodb_collection_chunks]
-        await _create_index(
-            c, "chunks", [("tenant_id", ASC), ("document_id", ASC)]
-        )
-        await _create_index(
-            c, "chunks", [("tenant_id", ASC), ("chunk_id", ASC)], unique=True
-        )
-        await _create_index(
-            c, "chunks", [("tenant_id", ASC), ("created_at", DESC)]
-        )
+        await _create_index(c, "chunks", [("tenant_id", ASC), ("document_id", ASC)])
+        await _create_index(c, "chunks", [("tenant_id", ASC), ("chunk_id", ASC)], unique=True)
+        await _create_index(c, "chunks", [("tenant_id", ASC), ("created_at", DESC)])
         await _create_index(c, "chunks", [("chunk_id", ASC)])
 
         # -- documents collection --
         d = db[settings.mongodb_collection_documents]
-        await _create_index(
-            d, "documents", [("tenant_id", ASC), ("source", ASC)]
-        )
-        await _create_index(
-            d, "documents", [("tenant_id", ASC), ("content_hash", ASC)]
-        )
-        await _create_index(
-            d, "documents", [("tenant_id", ASC), ("created_at", DESC)]
-        )
-        await _create_index(
-            d, "documents", [("tenant_id", ASC), ("version", ASC)]
-        )
+        await _create_index(d, "documents", [("tenant_id", ASC), ("source", ASC)])
+        await _create_index(d, "documents", [("tenant_id", ASC), ("content_hash", ASC)])
+        await _create_index(d, "documents", [("tenant_id", ASC), ("created_at", DESC)])
+        await _create_index(d, "documents", [("tenant_id", ASC), ("version", ASC)])
 
         # -- tenants collection --
         t = db[settings.mongodb_collection_tenants]
@@ -80,39 +66,30 @@ async def create_indexes() -> None:
 
         # -- users collection --
         u = db[settings.mongodb_collection_users]
-        await _create_index(
-            u, "users", [("tenant_id", ASC), ("email", ASC)], unique=True
-        )
+        await _create_index(u, "users", [("tenant_id", ASC), ("email", ASC)], unique=True)
         await _create_index(u, "users", [("email", ASC)])
 
         # -- conversations collection --
         cv = db[settings.mongodb_collection_conversations]
-        await _create_index(
-            cv, "conversations", [("tenant_id", ASC), ("session_id", ASC)]
-        )
-        await _create_index(
-            cv, "conversations", [("tenant_id", ASC), ("created_at", DESC)]
-        )
+        await _create_index(cv, "conversations", [("tenant_id", ASC), ("session_id", ASC)])
+        await _create_index(cv, "conversations", [("tenant_id", ASC), ("created_at", DESC)])
 
         # -- api_keys collection --
         ak = db[settings.mongodb_collection_api_keys]
-        await _create_index(
-            ak, "api_keys", [("key_hash", ASC)], unique=True
-        )
+        await _create_index(ak, "api_keys", [("key_hash", ASC)], unique=True)
         await _create_index(ak, "api_keys", [("tenant_id", ASC)])
         await _create_index(ak, "api_keys", [("key_prefix", ASC)])
 
+        # -- password_reset_tokens collection --
+        rt = db[settings.mongodb_collection_reset_tokens]
+        await _create_index(rt, "password_reset_tokens", [("token_hash", ASC)], unique=True)
+        await _create_index(rt, "password_reset_tokens", [("user_id", ASC)])
+
         # -- subscriptions collection --
         s = db[settings.mongodb_collection_subscriptions]
-        await _create_index(
-            s, "subscriptions", [("tenant_id", ASC)], unique=True
-        )
-        await _create_index(
-            s, "subscriptions", [("stripe_customer_id", ASC)]
-        )
-        await _create_index(
-            s, "subscriptions", [("stripe_subscription_id", ASC)]
-        )
+        await _create_index(s, "subscriptions", [("tenant_id", ASC)], unique=True)
+        await _create_index(s, "subscriptions", [("stripe_customer_id", ASC)])
+        await _create_index(s, "subscriptions", [("stripe_subscription_id", ASC)])
 
         logger.info("All indexes created successfully")
     finally:
