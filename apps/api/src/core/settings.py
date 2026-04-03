@@ -131,8 +131,9 @@ class Settings(BaseSettings):
         ..., description="Shared secret for JWT signing (same as NEXTAUTH_SECRET in frontend)"
     )
 
-    resend_api_key: str = Field(
-        ..., description="Resend API key for transactional emails"
+    resend_api_key: Optional[str] = Field(
+        default=None,
+        description="Resend API key for transactional emails (required for password reset)",
     )
 
     app_url: str = Field(

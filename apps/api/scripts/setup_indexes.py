@@ -66,8 +66,8 @@ async def create_indexes() -> None:
 
         # -- users collection --
         u = db[settings.mongodb_collection_users]
-        await _create_index(u, "users", [("tenant_id", ASC), ("email", ASC)], unique=True)
-        await _create_index(u, "users", [("email", ASC)])
+        await _create_index(u, "users", [("email", ASC)], unique=True)
+        await _create_index(u, "users", [("tenant_id", ASC)])
 
         # -- conversations collection --
         cv = db[settings.mongodb_collection_conversations]

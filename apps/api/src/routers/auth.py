@@ -36,6 +36,9 @@ def _get_auth_service(deps: AgentDependencies = Depends(get_deps)) -> AuthServic
 
 async def _send_reset_email(email: str, token: str, settings: Settings) -> None:
     """Send password reset email via Resend."""
+    if not settings.resend_api_key:
+        logger.warning("RESEND_API_KEY not configured — reset email not sent to %s", email)
+        return
     reset_url = f"{settings.app_url}/reset-password?token={token}"
     try:
         resend.api_key = settings.resend_api_key

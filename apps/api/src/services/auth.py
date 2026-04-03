@@ -10,6 +10,7 @@ from typing import Any, Optional
 
 from bson import ObjectId
 from pymongo.asynchronous.collection import AsyncCollection
+from pymongo.errors import DuplicateKeyError
 
 from src.core.security import hash_password, verify_password
 
@@ -54,10 +55,6 @@ class AuthService:
         Raises:
             ValueError: If email is already registered.
         """
-        existing = await self._users.find_one({"email": email.lower()})
-        if existing:
-            raise ValueError("Email is already registered")
-
         now = datetime.now(timezone.utc)
         tenant_id = str(uuid.uuid4())
 
@@ -90,7 +87,13 @@ class AuthService:
             "created_at": now,
             "updated_at": now,
         }
-        user_result = await self._users.insert_one(user_doc)
+        try:
+            user_result = await self._users.insert_one(user_doc)
+        except DuplicateKeyError:
+            # Race condition: another signup for same email won the insert.
+            # Roll back the orphaned tenant.
+            await self._tenants.delete_one({"tenant_id": tenant_id})
+            raise ValueError("Email is already registered")
 
         logger.info(
             "user_signed_up",
@@ -179,6 +182,9 @@ class AuthService:
     async def reset_password(self, token: str, new_password: str) -> None:
         """Reset a user's password using a reset token.
 
+        Uses atomic find_one_and_update to claim the token, preventing
+        concurrent use of the same token.
+
         Args:
             token: Raw reset token from the email link.
             new_password: New plaintext password.
@@ -187,28 +193,33 @@ class AuthService:
             ValueError: If token is invalid, expired, or already used.
         """
         token_hash = hashlib.sha256(token.encode()).hexdigest()
-        token_doc = await self._reset_tokens.find_one({"token_hash": token_hash})
+        now = datetime.now(timezone.utc)
+
+        # Atomically claim the token: find unused + unexpired, mark used in one op
+        token_doc = await self._reset_tokens.find_one_and_update(
+            {
+                "token_hash": token_hash,
+                "used": False,
+                "expires_at": {"$gt": now},
+            },
+            {"$set": {"used": True}},
+        )
 
         if not token_doc:
             raise ValueError("Invalid or expired reset token")
 
-        if token_doc.get("used"):
-            raise ValueError("Reset token has already been used")
-
-        if token_doc["expires_at"] < datetime.now(timezone.utc):
-            raise ValueError("Reset token has expired")
-
-        # Update the user's password (user_id stored as string, _id is ObjectId)
+        # Update the user's password and verify it matched exactly one user
         new_hash = hash_password(new_password)
-        await self._users.update_one(
+        result = await self._users.update_one(
             {"_id": ObjectId(token_doc["user_id"])},
-            {"$set": {"hashed_password": new_hash, "updated_at": datetime.now(timezone.utc)}},
+            {"$set": {"hashed_password": new_hash, "updated_at": now}},
         )
 
-        # Mark token as used
-        await self._reset_tokens.update_one(
-            {"_id": token_doc["_id"]},
-            {"$set": {"used": True}},
-        )
+        if result.matched_count == 0:
+            logger.error(
+                "password_reset_user_not_found",
+                extra={"user_id": token_doc["user_id"]},
+            )
+            raise ValueError("User account not found")
 
         logger.info("password_reset_completed", extra={"user_id": token_doc["user_id"]})

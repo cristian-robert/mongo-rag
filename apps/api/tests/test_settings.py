@@ -23,6 +23,21 @@ def test_settings_loads_auth_fields(monkeypatch):
 
 
 @pytest.mark.unit
+def test_settings_resend_api_key_optional(monkeypatch):
+    """Settings loads without RESEND_API_KEY (it's optional)."""
+    monkeypatch.setenv("MONGODB_URI", "mongodb://localhost:27017")
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("EMBEDDING_API_KEY", "test-key")
+    monkeypatch.setenv("NEXTAUTH_SECRET", "test-secret-at-least-32-chars-long!!")
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+
+    from src.core.settings import Settings
+
+    settings = Settings()
+    assert settings.resend_api_key is None
+
+
+@pytest.mark.unit
 def test_settings_requires_nextauth_secret(monkeypatch):
     """Settings raises if NEXTAUTH_SECRET is missing."""
     monkeypatch.setenv("MONGODB_URI", "mongodb://localhost:27017")
