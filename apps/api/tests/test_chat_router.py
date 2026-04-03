@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-MOCK_TENANT_ID = "test-tenant-001"
+from tests.conftest import make_auth_header
 
 
 @pytest.fixture
@@ -28,14 +28,14 @@ def app_client():
 
 
 @pytest.mark.unit
-def test_chat_missing_tenant_header(app_client):
-    """Chat without X-Tenant-ID returns 400."""
+def test_chat_missing_auth_header(app_client):
+    """Chat without Authorization header returns 401."""
     client, _ = app_client
     response = client.post(
         "/api/v1/chat",
         json={"message": "Hello"},
     )
-    assert response.status_code == 400
+    assert response.status_code == 401
 
 
 @pytest.mark.unit
@@ -45,7 +45,7 @@ def test_chat_empty_message(app_client):
     response = client.post(
         "/api/v1/chat",
         json={"message": ""},
-        headers={"X-Tenant-ID": MOCK_TENANT_ID},
+        headers=make_auth_header(),
     )
     assert response.status_code == 422
 
@@ -69,7 +69,7 @@ def test_chat_valid_request_returns_response(app_client):
         response = client.post(
             "/api/v1/chat",
             json={"message": "How do I configure SSO?"},
-            headers={"X-Tenant-ID": MOCK_TENANT_ID},
+            headers=make_auth_header(),
         )
 
         assert response.status_code == 200
@@ -95,7 +95,7 @@ def test_chat_conversation_not_found(app_client):
         response = client.post(
             "/api/v1/chat",
             json={"message": "Hello", "conversation_id": "nonexistent"},
-            headers={"X-Tenant-ID": MOCK_TENANT_ID},
+            headers=make_auth_header(),
         )
 
         assert response.status_code == 404
