@@ -403,3 +403,34 @@ async def test_reset_password_validates_tenant_id():
     service = AuthService(users_col, tenants_col, reset_tokens_col)
     with pytest.raises(ValueError, match="Invalid or expired reset token"):
         await service.reset_password("some-token", "new-password")
+
+
+@pytest.mark.unit
+async def test_reset_password_allows_legacy_token_without_tenant_id():
+    """reset_password succeeds for legacy tokens missing tenant_id field."""
+    users_col = MagicMock()
+    tenants_col = MagicMock()
+    reset_tokens_col = MagicMock()
+
+    token_user_id = str(ObjectId())
+
+    # Legacy token: no tenant_id field
+    reset_tokens_col.find_one_and_update = AsyncMock(
+        return_value={
+            "user_id": token_user_id,
+            "token_hash": "abc123",
+        }
+    )
+
+    users_col.find_one = AsyncMock(
+        return_value={
+            "_id": ObjectId(token_user_id),
+            "tenant_id": "tenant-abc",
+        }
+    )
+    users_col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+
+    service = AuthService(users_col, tenants_col, reset_tokens_col)
+    # Should NOT raise — legacy tokens without tenant_id are allowed
+    await service.reset_password("some-token", "new-password")
+    users_col.update_one.assert_called_once()

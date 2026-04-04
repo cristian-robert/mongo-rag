@@ -208,15 +208,25 @@ class AuthService:
         if not token_doc:
             raise ValueError("Invalid or expired reset token")
 
-        # Defense in depth: verify token tenant matches user tenant
+        # Defense in depth: verify token tenant matches user tenant.
+        # Legacy tokens (created before tenant_id was added) lack the field —
+        # skip the check for those so outstanding reset links are not burned.
         user = await self._users.find_one({"_id": ObjectId(token_doc["user_id"])})
-        if not user or user.get("tenant_id") != token_doc.get("tenant_id"):
+        if not user:
+            logger.error(
+                "password_reset_user_not_found",
+                extra={"user_id": token_doc["user_id"]},
+            )
+            raise ValueError("Invalid or expired reset token")
+
+        token_tenant = token_doc.get("tenant_id")
+        if token_tenant is not None and token_tenant != user.get("tenant_id"):
             logger.error(
                 "password_reset_tenant_mismatch",
                 extra={
                     "user_id": token_doc["user_id"],
-                    "token_tenant": token_doc.get("tenant_id"),
-                    "user_tenant": user.get("tenant_id") if user else None,
+                    "token_tenant": token_tenant,
+                    "user_tenant": user.get("tenant_id"),
                 },
             )
             raise ValueError("Invalid or expired reset token")
