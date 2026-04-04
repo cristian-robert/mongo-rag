@@ -39,9 +39,7 @@ class AuthService:
         self._tenants = tenants_collection
         self._reset_tokens = reset_tokens_collection
 
-    async def signup(
-        self, email: str, password: str, organization_name: str
-    ) -> dict[str, Any]:
+    async def signup(self, email: str, password: str, organization_name: str) -> dict[str, Any]:
         """Create a new tenant and user.
 
         Args:
@@ -155,6 +153,7 @@ class AuthService:
             return None
 
         user_id = str(user["_id"])
+        tenant_id = user["tenant_id"]
 
         # Invalidate any existing tokens for this user
         await self._reset_tokens.update_many(
@@ -169,6 +168,7 @@ class AuthService:
 
         token_doc = {
             "user_id": user_id,
+            "tenant_id": tenant_id,
             "token_hash": token_hash,
             "expires_at": now + timedelta(hours=1),
             "used": False,
@@ -208,10 +208,23 @@ class AuthService:
         if not token_doc:
             raise ValueError("Invalid or expired reset token")
 
+        # Defense in depth: verify token tenant matches user tenant
+        user = await self._users.find_one({"_id": ObjectId(token_doc["user_id"])})
+        if not user or user.get("tenant_id") != token_doc.get("tenant_id"):
+            logger.error(
+                "password_reset_tenant_mismatch",
+                extra={
+                    "user_id": token_doc["user_id"],
+                    "token_tenant": token_doc.get("tenant_id"),
+                    "user_tenant": user.get("tenant_id") if user else None,
+                },
+            )
+            raise ValueError("Invalid or expired reset token")
+
         # Update the user's password and verify it matched exactly one user
         new_hash = hash_password(new_password)
         result = await self._users.update_one(
-            {"_id": ObjectId(token_doc["user_id"])},
+            {"_id": user["_id"]},
             {"$set": {"hashed_password": new_hash, "updated_at": now}},
         )
 
