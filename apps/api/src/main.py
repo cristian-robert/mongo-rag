@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.database import ensure_indexes
 from src.core.dependencies import AgentDependencies
+from src.core.middleware import TenantGuardMiddleware
 from src.routers.auth import router as auth_router
 from src.routers.chat import router as chat_router
 from src.routers.health import router as health_router
@@ -53,6 +54,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Tenant guard middleware (safety net -- logs warnings, never blocks)
+app.add_middleware(TenantGuardMiddleware)
 
 # Include routers
 app.include_router(health_router)

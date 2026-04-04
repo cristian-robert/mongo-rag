@@ -5,7 +5,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
@@ -18,6 +18,7 @@ _API_KEY_PREFIX = "mrag_"
 
 
 async def get_tenant_id(
+    request: Request,
     authorization: Optional[str] = Header(default=None),
     deps: AgentDependencies = Depends(get_deps),
 ) -> str:
@@ -28,6 +29,7 @@ async def get_tenant_id(
     - Otherwise → JWT path (decode with nextauth_secret)
 
     Args:
+        request: The incoming request (used to set tenant context on state).
         authorization: Authorization header value.
         deps: Application dependencies for DB access.
 
@@ -46,9 +48,12 @@ async def get_tenant_id(
     token = authorization[7:]  # Strip "Bearer "
 
     if token.startswith(_API_KEY_PREFIX):
-        return await _resolve_api_key(token, deps)
+        tenant_id = await _resolve_api_key(token, deps)
+    else:
+        tenant_id = _resolve_jwt(token)
 
-    return _resolve_jwt(token)
+    request.state.tenant_id = tenant_id
+    return tenant_id
 
 
 async def _resolve_api_key(raw_key: str, deps: AgentDependencies) -> str:
@@ -83,6 +88,7 @@ async def _resolve_api_key(raw_key: str, deps: AgentDependencies) -> str:
 
 
 async def get_tenant_id_from_jwt(
+    request: Request,
     authorization: Optional[str] = Header(default=None),
 ) -> str:
     """Extract tenant_id from JWT only. Rejects API keys.
@@ -91,6 +97,7 @@ async def get_tenant_id_from_jwt(
     sessions (e.g., key management), not via API keys.
 
     Args:
+        request: The incoming request (used to set tenant context on state).
         authorization: Authorization header value.
 
     Returns:
@@ -113,7 +120,9 @@ async def get_tenant_id_from_jwt(
             detail="API keys cannot access this endpoint",
         )
 
-    return _resolve_jwt(token)
+    tenant_id = _resolve_jwt(token)
+    request.state.tenant_id = tenant_id
+    return tenant_id
 
 
 async def resolve_token(raw_token: str, deps: AgentDependencies) -> str:
