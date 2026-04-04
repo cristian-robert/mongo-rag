@@ -29,11 +29,16 @@ async def lifespan(app: FastAPI):
     try:
         await deps.initialize()
         app.state.deps = deps
-        await ensure_indexes(deps.db, deps.settings)
-        logger.info("MongoRAG API started successfully")
     except Exception as e:
         logger.error("Failed to initialize: %s", e)
         app.state.deps = deps  # Store even on failure so health can report it
+        yield
+        return
+
+    # Index creation is separate — failure is fatal because tenant
+    # isolation guarantees depend on these indexes (e.g. unique email).
+    await ensure_indexes(deps.db, deps.settings)
+    logger.info("MongoRAG API started successfully")
     yield
     logger.info("Shutting down MongoRAG API...")
     await deps.cleanup()
