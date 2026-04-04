@@ -116,27 +116,36 @@ def _make_ws_token(tenant_id: str = MOCK_TENANT_ID) -> str:
 
 @pytest.mark.unit
 def test_websocket_rejects_missing_token(client):
-    """WebSocket without token query param is rejected."""
-    with pytest.raises(Exception):
+    """WebSocket without token query param is rejected with code 4001."""
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
         with client.websocket_connect("/api/v1/chat/ws"):
             pass
+    assert exc_info.value.code == 4001
 
 
 @pytest.mark.unit
 def test_websocket_rejects_invalid_token(client):
-    """WebSocket with invalid token is rejected."""
-    with pytest.raises(Exception):
+    """WebSocket with invalid token is rejected with code 4001."""
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
         with client.websocket_connect("/api/v1/chat/ws?token=invalid-jwt"):
             pass
+    assert exc_info.value.code == 4001
 
 
 @pytest.mark.unit
 def test_websocket_rejects_no_tenant_in_token(client):
-    """WebSocket with JWT missing tenant_id claim is rejected."""
+    """WebSocket with JWT missing tenant_id claim is rejected with code 4001."""
+    from starlette.websockets import WebSocketDisconnect
+
     token = jose_jwt.encode({"sub": "test-user"}, JWT_SECRET, algorithm="HS256")
-    with pytest.raises(Exception):
+    with pytest.raises(WebSocketDisconnect) as exc_info:
         with client.websocket_connect(f"/api/v1/chat/ws?token={token}"):
             pass
+    assert exc_info.value.code == 4001
 
 
 @pytest.mark.unit
