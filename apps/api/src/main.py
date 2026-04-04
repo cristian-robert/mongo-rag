@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.core.database import ensure_indexes
 from src.core.dependencies import AgentDependencies
 from src.routers.auth import router as auth_router
 from src.routers.chat import router as chat_router
@@ -27,6 +28,7 @@ async def lifespan(app: FastAPI):
     try:
         await deps.initialize()
         app.state.deps = deps
+        await ensure_indexes(deps.db)
         logger.info("MongoRAG API started successfully")
     except Exception as e:
         logger.error("Failed to initialize: %s", e)
