@@ -9,9 +9,10 @@ from fastapi.responses import StreamingResponse
 
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
-from src.core.tenant import get_tenant_id, resolve_token
+from src.core.tenant import get_tenant_id
 from src.models.api import ChatRequest, ChatResponse, WSMessage
 from src.services.chat import ChatService, ConversationNotFoundError
+from src.services.ws_ticket import WSTicketService
 
 logger = logging.getLogger(__name__)
 
@@ -76,22 +77,24 @@ async def chat_endpoint(
 @router.websocket("/chat/ws")
 async def chat_websocket(
     websocket: WebSocket,
-    token: Optional[str] = None,
+    ticket: Optional[str] = None,
 ):
     """WebSocket endpoint for real-time chat.
 
-    Authenticate via query parameter: /api/v1/chat/ws?token=<jwt_or_api_key>
+    Authenticate via one-time ticket: /api/v1/chat/ws?ticket=<ticket>
+    Obtain a ticket from POST /api/v1/auth/ws-ticket first.
     """
-    if not token or not token.strip():
-        await websocket.close(code=4001, reason="token query parameter required")
+    if not ticket or not ticket.strip():
+        await websocket.close(code=4001, reason="ticket query parameter required")
         return
 
-    # Resolve tenant from token before accepting connection
+    # Validate and consume the one-time ticket before accepting connection
     deps: AgentDependencies = websocket.app.state.deps
-    try:
-        tenant_id = await resolve_token(token.strip(), deps)
-    except HTTPException:
-        await websocket.close(code=4001, reason="Invalid or expired token")
+    ticket_service = WSTicketService(deps.ws_tickets_collection)
+    tenant_id = await ticket_service.consume_ticket(ticket.strip())
+
+    if not tenant_id:
+        await websocket.close(code=4001, reason="Invalid or expired ticket")
         return
 
     await websocket.accept()

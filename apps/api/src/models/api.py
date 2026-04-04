@@ -123,6 +123,12 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class WSTicketResponse(BaseModel):
+    """Response containing a short-lived WebSocket ticket."""
+
+    ticket: str
+
+
 # --- API Keys ---
 
 

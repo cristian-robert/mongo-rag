@@ -15,9 +15,7 @@ logger = logging.getLogger(__name__)
 _INDEX_CONFLICT_CODE = 86
 
 
-async def _create_index_safe(
-    collection: AsyncCollection, keys, **kwargs
-) -> None:
+async def _create_index_safe(collection: AsyncCollection, keys, **kwargs) -> None:
     """Create an index, handling spec conflicts by drop-and-recreate.
 
     If an index with the same key pattern but different options exists,
@@ -28,9 +26,7 @@ async def _create_index_safe(
         await collection.create_index(keys, **kwargs)
     except OperationFailure as e:
         if e.code == _INDEX_CONFLICT_CODE:
-            # Extract the conflicting index name from the error details
-            # and drop it before recreating with new options.
-            existing = e.details.get("errmsg", "")
+            # Drop the conflicting index and recreate with new options.
             logger.warning(
                 "index_spec_conflict_recreating",
                 extra={"collection": collection.name, "keys": str(keys)},
@@ -92,6 +88,16 @@ async def ensure_indexes(db: AsyncDatabase, settings: Settings) -> None:
     # Reset tokens: auto-cleanup after 24 hours
     await db[settings.mongodb_collection_reset_tokens].create_index(
         "expires_at", expireAfterSeconds=86400, background=True
+    )
+
+    # WS tickets: unique hash lookup
+    await db[settings.mongodb_collection_ws_tickets].create_index(
+        "ticket_hash", unique=True, background=True
+    )
+
+    # WS tickets: auto-cleanup after 60 seconds (tickets expire in 30s)
+    await db[settings.mongodb_collection_ws_tickets].create_index(
+        "expires_at", expireAfterSeconds=60, background=True
     )
 
     logger.info("database_indexes_ensured")

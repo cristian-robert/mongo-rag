@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
 from src.core.settings import Settings
+from src.core.tenant import get_tenant_id
 from src.models.api import (
     ForgotPasswordRequest,
     LoginRequest,
@@ -17,8 +18,10 @@ from src.models.api import (
     ResetPasswordRequest,
     SignupRequest,
     SignupResponse,
+    WSTicketResponse,
 )
 from src.services.auth import AuthService
+from src.services.ws_ticket import WSTicketService
 
 logger = logging.getLogger(__name__)
 
@@ -126,3 +129,20 @@ async def reset_password(
         raise HTTPException(status_code=400, detail=str(e))
 
     return MessageResponse(message="Password has been reset successfully.")
+
+
+@router.post("/ws-ticket", response_model=WSTicketResponse)
+async def create_ws_ticket(
+    tenant_id: str = Depends(get_tenant_id),
+    deps: AgentDependencies = Depends(get_deps),
+):
+    """Exchange a JWT or API key for a short-lived WebSocket ticket.
+
+    The ticket is single-use and expires in 30 seconds. Use it to
+    connect to the WebSocket endpoint: /api/v1/chat/ws?ticket=<ticket>
+
+    This avoids exposing long-lived credentials in the WebSocket URL.
+    """
+    service = WSTicketService(deps.ws_tickets_collection)
+    ticket = await service.create_ticket(tenant_id)
+    return WSTicketResponse(ticket=ticket)

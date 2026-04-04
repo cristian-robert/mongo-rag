@@ -253,8 +253,8 @@ async def test_reset_token_stores_tenant_id():
 
 
 @pytest.mark.unit
-def test_websocket_rejects_without_token(client):
-    """WebSocket without token is rejected."""
+def test_websocket_rejects_without_ticket(client):
+    """WebSocket without ticket is rejected."""
     from starlette.websockets import WebSocketDisconnect
 
     with pytest.raises(WebSocketDisconnect) as exc_info:

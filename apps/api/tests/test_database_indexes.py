@@ -19,6 +19,7 @@ async def test_ensure_indexes_creates_expected_indexes():
         "conversations",
         "api_keys",
         "password_reset_tokens",
+        "ws_tickets",
     ]:
         mock_col = MagicMock()
         mock_col.create_index = AsyncMock()
@@ -33,6 +34,7 @@ async def test_ensure_indexes_creates_expected_indexes():
     mock_settings.mongodb_collection_conversations = "conversations"
     mock_settings.mongodb_collection_api_keys = "api_keys"
     mock_settings.mongodb_collection_reset_tokens = "password_reset_tokens"
+    mock_settings.mongodb_collection_ws_tickets = "ws_tickets"
 
     await ensure_indexes(mock_db, mock_settings)
 
@@ -65,4 +67,14 @@ async def test_ensure_indexes_creates_expected_indexes():
     # reset_tokens: TTL on expires_at (24 hours)
     collections["password_reset_tokens"].create_index.assert_any_call(
         "expires_at", expireAfterSeconds=86400, background=True
+    )
+
+    # ws_tickets: unique ticket_hash
+    collections["ws_tickets"].create_index.assert_any_call(
+        "ticket_hash", unique=True, background=True
+    )
+
+    # ws_tickets: TTL on expires_at (60 seconds)
+    collections["ws_tickets"].create_index.assert_any_call(
+        "expires_at", expireAfterSeconds=60, background=True
     )
