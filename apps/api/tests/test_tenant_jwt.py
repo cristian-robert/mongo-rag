@@ -1,5 +1,7 @@
 """Tests for JWT-based tenant extraction."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
@@ -19,6 +21,12 @@ def jwt_app():
     @app.get("/test")
     async def test_endpoint(tenant_id: str = Depends(get_tenant_id)):
         return {"tenant_id": tenant_id}
+
+    # Set up mock deps on app.state so get_deps works
+    mock_deps = MagicMock()
+    mock_deps.api_keys_collection = MagicMock()
+    mock_deps.api_keys_collection.find_one = AsyncMock(return_value=None)
+    app.state.deps = mock_deps
 
     return TestClient(app)
 
