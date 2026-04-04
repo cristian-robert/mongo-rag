@@ -23,9 +23,7 @@ async def ensure_indexes(db: AsyncDatabase, settings: Settings) -> None:
     logger.info("ensuring_database_indexes")
 
     # Users: unique email for global email uniqueness
-    await db[settings.mongodb_collection_users].create_index(
-        "email", unique=True, background=True
-    )
+    await db[settings.mongodb_collection_users].create_index("email", unique=True, background=True)
 
     # Documents: tenant-scoped listing
     await db[settings.mongodb_collection_documents].create_index(
@@ -43,9 +41,7 @@ async def ensure_indexes(db: AsyncDatabase, settings: Settings) -> None:
     )
 
     # API keys: tenant-scoped listing
-    await db[settings.mongodb_collection_api_keys].create_index(
-        "tenant_id", background=True
-    )
+    await db[settings.mongodb_collection_api_keys].create_index("tenant_id", background=True)
 
     # Reset tokens: unique hash lookup
     await db[settings.mongodb_collection_reset_tokens].create_index(

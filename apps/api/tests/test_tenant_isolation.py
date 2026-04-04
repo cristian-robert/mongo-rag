@@ -8,13 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from tests.conftest import (
-    MOCK_TENANT_B_ID,
-    MOCK_TENANT_ID,
-    make_auth_header,
-    make_auth_header_b,
-)
-
+from tests.conftest import MOCK_TENANT_B_ID, MOCK_TENANT_ID, make_auth_header
 
 # -- Chat Isolation -----------------------------------------------------------
 
@@ -58,11 +52,11 @@ def test_document_status_scoped_to_tenant(client, mock_deps):
     """Document status endpoint filters by authenticated tenant."""
     doc_id = str(ObjectId())
 
-    with patch("src.routers.ingest.IngestionService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.ingest.IngestionService") as mock_service:
+        instance = mock_service.return_value
         instance.get_document_status = AsyncMock(return_value=None)
 
-        response = client.get(
+        client.get(
             f"/api/v1/documents/{doc_id}/status",
             headers=make_auth_header(),
         )
@@ -81,8 +75,8 @@ def test_document_status_scoped_to_tenant(client, mock_deps):
 @pytest.mark.unit
 def test_list_keys_scoped_to_tenant(client, mock_deps):
     """List keys only returns keys for authenticated tenant."""
-    with patch("src.routers.keys.APIKeyService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.keys.APIKeyService") as mock_service:
+        instance = mock_service.return_value
         instance.list_keys = AsyncMock(return_value=[])
 
         response = client.get(
@@ -99,11 +93,11 @@ def test_revoke_key_scoped_to_tenant(client, mock_deps):
     """Revoke key only works for the authenticated tenant's keys."""
     key_id = str(ObjectId())
 
-    with patch("src.routers.keys.APIKeyService") as MockService:
-        instance = MockService.return_value
+    with patch("src.routers.keys.APIKeyService") as mock_service:
+        instance = mock_service.return_value
         instance.revoke_key = AsyncMock(return_value=True)
 
-        response = client.delete(
+        client.delete(
             f"/api/v1/keys/{key_id}",
             headers=make_auth_header(),
         )
@@ -275,8 +269,6 @@ def test_websocket_rejects_forged_tenant_id(client):
     from starlette.websockets import WebSocketDisconnect
 
     with pytest.raises(WebSocketDisconnect) as exc_info:
-        with client.websocket_connect(
-            f"/api/v1/chat/ws?tenant_id={MOCK_TENANT_B_ID}"
-        ):
+        with client.websocket_connect(f"/api/v1/chat/ws?tenant_id={MOCK_TENANT_B_ID}"):
             pass
     assert exc_info.value.code == 4001
