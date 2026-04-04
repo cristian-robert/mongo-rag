@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
-from src.core.tenant import get_tenant_id
+from src.core.tenant import get_tenant_id_from_jwt
 from src.models.api import (
     CreateKeyRequest,
     CreateKeyResponse,
@@ -30,7 +30,7 @@ def _get_api_key_service(deps: AgentDependencies = Depends(get_deps)) -> APIKeyS
 @router.post("", response_model=CreateKeyResponse, status_code=201)
 async def create_key(
     body: CreateKeyRequest,
-    tenant_id: str = Depends(get_tenant_id),
+    tenant_id: str = Depends(get_tenant_id_from_jwt),
     service: APIKeyService = Depends(_get_api_key_service),
 ):
     """Generate a new API key. The raw key is returned once and cannot be retrieved again."""
@@ -44,7 +44,7 @@ async def create_key(
 
 @router.get("", response_model=KeyListResponse)
 async def list_keys(
-    tenant_id: str = Depends(get_tenant_id),
+    tenant_id: str = Depends(get_tenant_id_from_jwt),
     service: APIKeyService = Depends(_get_api_key_service),
 ):
     """List all API keys for the authenticated tenant."""
@@ -55,7 +55,7 @@ async def list_keys(
 @router.delete("/{key_id}", response_model=MessageResponse)
 async def revoke_key(
     key_id: str,
-    tenant_id: str = Depends(get_tenant_id),
+    tenant_id: str = Depends(get_tenant_id_from_jwt),
     service: APIKeyService = Depends(_get_api_key_service),
 ):
     """Revoke an API key (soft delete)."""

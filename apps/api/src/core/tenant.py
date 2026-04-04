@@ -82,6 +82,40 @@ async def _resolve_api_key(raw_key: str, deps: AgentDependencies) -> str:
     return doc["tenant_id"]
 
 
+async def get_tenant_id_from_jwt(
+    authorization: Optional[str] = Header(default=None),
+) -> str:
+    """Extract tenant_id from JWT only. Rejects API keys.
+
+    Use this for endpoints that must only be accessible via dashboard
+    sessions (e.g., key management), not via API keys.
+
+    Args:
+        authorization: Authorization header value.
+
+    Returns:
+        Validated tenant_id string.
+
+    Raises:
+        HTTPException: 401 if token is missing, invalid, or an API key.
+    """
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Authorization header with Bearer token is required",
+        )
+
+    token = authorization[7:]  # Strip "Bearer "
+
+    if token.startswith(_API_KEY_PREFIX):
+        raise HTTPException(
+            status_code=403,
+            detail="API keys cannot access this endpoint",
+        )
+
+    return _resolve_jwt(token)
+
+
 def _resolve_jwt(token: str) -> str:
     """Validate a JWT and return its tenant_id.
 

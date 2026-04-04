@@ -144,7 +144,7 @@ class CreateKeyRequest(BaseModel):
         """Ensure all permissions are from the known set."""
         invalid = set(v) - VALID_PERMISSIONS
         if invalid:
-            raise ValueError(f"Invalid permissions: {invalid}")
+            raise ValueError(f"Invalid permissions: {', '.join(sorted(invalid))}")
         return v
 
 

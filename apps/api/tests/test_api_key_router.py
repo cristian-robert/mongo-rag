@@ -62,6 +62,18 @@ def test_create_key_without_auth_returns_401(keys_client):
 
 
 @pytest.mark.unit
+def test_create_key_with_api_key_returns_403(keys_client):
+    """POST /api/v1/keys with API key (not JWT) returns 403."""
+    response = keys_client.post(
+        "/api/v1/keys",
+        json={"name": "Test Key"},
+        headers={"Authorization": "Bearer mrag_someapikey12345678901234567890"},
+    )
+    assert response.status_code == 403
+    assert "API keys cannot access this endpoint" in response.json()["detail"]
+
+
+@pytest.mark.unit
 def test_list_keys_success(keys_client):
     """GET /api/v1/keys returns key list for tenant."""
     key_id = str(ObjectId())
