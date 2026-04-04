@@ -4,8 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from jose import jwt as jose_jwt
 
-from tests.conftest import make_auth_header
+from tests.conftest import JWT_SECRET, MOCK_TENANT_ID, make_auth_header
 
 
 @pytest.fixture
@@ -99,3 +100,52 @@ def test_chat_conversation_not_found(app_client):
         )
 
         assert response.status_code == 404
+
+
+# --- WebSocket authentication tests ---
+
+
+def _make_ws_token(tenant_id: str = MOCK_TENANT_ID) -> str:
+    """Create a JWT token for WebSocket auth."""
+    return jose_jwt.encode(
+        {"sub": "test-user", "tenant_id": tenant_id, "role": "owner"},
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+
+
+@pytest.mark.unit
+def test_websocket_rejects_missing_token(client):
+    """WebSocket without token query param is rejected."""
+    with pytest.raises(Exception):
+        with client.websocket_connect("/api/v1/chat/ws"):
+            pass
+
+
+@pytest.mark.unit
+def test_websocket_rejects_invalid_token(client):
+    """WebSocket with invalid token is rejected."""
+    with pytest.raises(Exception):
+        with client.websocket_connect("/api/v1/chat/ws?token=invalid-jwt"):
+            pass
+
+
+@pytest.mark.unit
+def test_websocket_rejects_no_tenant_in_token(client):
+    """WebSocket with JWT missing tenant_id claim is rejected."""
+    token = jose_jwt.encode({"sub": "test-user"}, JWT_SECRET, algorithm="HS256")
+    with pytest.raises(Exception):
+        with client.websocket_connect(f"/api/v1/chat/ws?token={token}"):
+            pass
+
+
+@pytest.mark.unit
+def test_websocket_accepts_valid_jwt(client, mock_deps):
+    """WebSocket with valid JWT token is accepted."""
+    token = _make_ws_token()
+    mock_deps.settings = MagicMock()
+
+    with client.websocket_connect(f"/api/v1/chat/ws?token={token}") as ws:
+        ws.send_json({"type": "cancel"})
+        response = ws.receive_json()
+        assert response["type"] == "cancelled"

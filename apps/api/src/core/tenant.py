@@ -116,6 +116,26 @@ async def get_tenant_id_from_jwt(
     return _resolve_jwt(token)
 
 
+async def resolve_token(raw_token: str, deps: AgentDependencies) -> str:
+    """Resolve a raw token (JWT or API key) to a tenant_id.
+
+    Used by WebSocket handlers where FastAPI Depends is not available.
+
+    Args:
+        raw_token: JWT or API key string (without 'Bearer ' prefix).
+        deps: Application dependencies for DB access.
+
+    Returns:
+        Validated tenant_id string.
+
+    Raises:
+        HTTPException: 401 if token is invalid.
+    """
+    if raw_token.startswith(_API_KEY_PREFIX):
+        return await _resolve_api_key(raw_token, deps)
+    return _resolve_jwt(raw_token)
+
+
 def _resolve_jwt(token: str) -> str:
     """Validate a JWT and return its tenant_id.
 

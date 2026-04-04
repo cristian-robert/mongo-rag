@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
-from src.core.tenant import get_tenant_id
+from src.core.tenant import get_tenant_id, resolve_token
 from src.models.api import ChatRequest, ChatResponse, WSMessage
 from src.services.chat import ChatService, ConversationNotFoundError
 
@@ -76,20 +76,25 @@ async def chat_endpoint(
 @router.websocket("/chat/ws")
 async def chat_websocket(
     websocket: WebSocket,
-    tenant_id: Optional[str] = None,
+    token: Optional[str] = None,
 ):
     """WebSocket endpoint for real-time chat.
 
-    Tenant ID is passed as query parameter: /api/v1/chat/ws?tenant_id=...
+    Authenticate via query parameter: /api/v1/chat/ws?token=<jwt_or_api_key>
     """
-    if not tenant_id or not tenant_id.strip():
-        await websocket.close(code=4001, reason="tenant_id query parameter required")
+    if not token or not token.strip():
+        await websocket.close(code=4001, reason="token query parameter required")
         return
-    tenant_id = tenant_id.strip()
+
+    # Resolve tenant from token before accepting connection
+    deps: AgentDependencies = websocket.app.state.deps
+    try:
+        tenant_id = await resolve_token(token.strip(), deps)
+    except HTTPException:
+        await websocket.close(code=4001, reason="Invalid or expired token")
+        return
 
     await websocket.accept()
-    # Access deps from app state directly (WebSocket can't use Depends)
-    deps: AgentDependencies = websocket.app.state.deps
     service = ChatService(deps)
 
     try:
