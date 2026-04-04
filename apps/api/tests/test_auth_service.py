@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from bson import ObjectId
 
+from src.services.auth import AuthService
+
 MOCK_USER_OID = str(ObjectId())
 
 
@@ -209,6 +211,7 @@ async def test_create_password_reset_token(mock_collections):
     mock_collections["users"].find_one.return_value = {
         "_id": "user-id-123",
         "email": "test@example.com",
+        "tenant_id": "tenant-abc",
     }
 
     service = AuthService(
@@ -230,6 +233,7 @@ async def test_create_password_reset_token(mock_collections):
     expected_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     assert stored["token_hash"] == expected_hash
     assert stored["user_id"] == "user-id-123"
+    assert stored["tenant_id"] == "tenant-abc"
     assert stored["used"] is False
 
 
@@ -262,9 +266,15 @@ async def test_reset_password_success(mock_collections):
     mock_collections["reset_tokens"].find_one_and_update.return_value = {
         "_id": "token-id",
         "user_id": MOCK_USER_OID,
+        "tenant_id": "tenant-abc",
         "token_hash": token_hash,
         "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
         "used": False,
+    }
+    # User lookup for tenant validation
+    mock_collections["users"].find_one.return_value = {
+        "_id": ObjectId(MOCK_USER_OID),
+        "tenant_id": "tenant-abc",
     }
     # user update succeeds (matched_count=1)
     mock_collections["users"].update_one.return_value = MagicMock(matched_count=1)
@@ -322,12 +332,13 @@ async def test_reset_password_user_not_found(mock_collections):
     mock_collections["reset_tokens"].find_one_and_update.return_value = {
         "_id": "token-id",
         "user_id": MOCK_USER_OID,
+        "tenant_id": "tenant-abc",
         "token_hash": hashlib.sha256(raw_token.encode()).hexdigest(),
         "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
         "used": False,
     }
-    # User update matches zero documents
-    mock_collections["users"].update_one.return_value = MagicMock(matched_count=0)
+    # User lookup returns None — user was deleted after token was issued
+    mock_collections["users"].find_one.return_value = None
 
     service = AuthService(
         users_collection=mock_collections["users"],
@@ -335,5 +346,91 @@ async def test_reset_password_user_not_found(mock_collections):
         reset_tokens_collection=mock_collections["reset_tokens"],
     )
 
-    with pytest.raises(ValueError, match="User account not found"):
+    with pytest.raises(ValueError, match="Invalid or expired reset token"):
         await service.reset_password(token=raw_token, new_password="newpassword123")
+
+
+@pytest.mark.unit
+async def test_reset_token_includes_tenant_id():
+    """create_password_reset_token stores tenant_id from user doc."""
+    users_col = MagicMock()
+    tenants_col = MagicMock()
+    reset_tokens_col = MagicMock()
+
+    users_col.find_one = AsyncMock(
+        return_value={
+            "_id": ObjectId(),
+            "email": "alice@example.com",
+            "tenant_id": "tenant-abc",
+        }
+    )
+    reset_tokens_col.update_many = AsyncMock()
+    reset_tokens_col.insert_one = AsyncMock()
+
+    service = AuthService(users_col, tenants_col, reset_tokens_col)
+    await service.create_password_reset_token("alice@example.com")
+
+    inserted_doc = reset_tokens_col.insert_one.call_args[0][0]
+    assert inserted_doc["tenant_id"] == "tenant-abc"
+
+
+@pytest.mark.unit
+async def test_reset_password_validates_tenant_id():
+    """reset_password verifies token tenant_id matches user tenant_id."""
+    users_col = MagicMock()
+    tenants_col = MagicMock()
+    reset_tokens_col = MagicMock()
+
+    token_user_id = str(ObjectId())
+
+    reset_tokens_col.find_one_and_update = AsyncMock(
+        return_value={
+            "user_id": token_user_id,
+            "tenant_id": "tenant-abc",
+            "token_hash": "abc123",
+        }
+    )
+
+    # User belongs to a DIFFERENT tenant
+    users_col.find_one = AsyncMock(
+        return_value={
+            "_id": ObjectId(token_user_id),
+            "tenant_id": "tenant-xyz",
+        }
+    )
+    users_col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+
+    service = AuthService(users_col, tenants_col, reset_tokens_col)
+    with pytest.raises(ValueError, match="Invalid or expired reset token"):
+        await service.reset_password("some-token", "new-password")
+
+
+@pytest.mark.unit
+async def test_reset_password_allows_legacy_token_without_tenant_id():
+    """reset_password succeeds for legacy tokens missing tenant_id field."""
+    users_col = MagicMock()
+    tenants_col = MagicMock()
+    reset_tokens_col = MagicMock()
+
+    token_user_id = str(ObjectId())
+
+    # Legacy token: no tenant_id field
+    reset_tokens_col.find_one_and_update = AsyncMock(
+        return_value={
+            "user_id": token_user_id,
+            "token_hash": "abc123",
+        }
+    )
+
+    users_col.find_one = AsyncMock(
+        return_value={
+            "_id": ObjectId(token_user_id),
+            "tenant_id": "tenant-abc",
+        }
+    )
+    users_col.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+
+    service = AuthService(users_col, tenants_col, reset_tokens_col)
+    # Should NOT raise — legacy tokens without tenant_id are allowed
+    await service.reset_password("some-token", "new-password")
+    users_col.update_one.assert_called_once()

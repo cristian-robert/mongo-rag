@@ -66,6 +66,11 @@ class Settings(BaseSettings):
         description="Collection for password reset tokens",
     )
 
+    mongodb_collection_ws_tickets: str = Field(
+        default="ws_tickets",
+        description="Collection for short-lived WebSocket auth tickets",
+    )
+
     # LLM Configuration (OpenAI-compatible)
     llm_provider: str = Field(
         default="openrouter",

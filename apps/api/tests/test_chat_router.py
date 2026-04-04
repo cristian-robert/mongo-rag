@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import make_auth_header
+from tests.conftest import MOCK_TENANT_ID, make_auth_header
 
 
 @pytest.fixture
@@ -99,3 +99,50 @@ def test_chat_conversation_not_found(app_client):
         )
 
         assert response.status_code == 404
+
+
+# --- WebSocket ticket-based authentication tests ---
+
+
+@pytest.mark.unit
+def test_websocket_rejects_missing_ticket(client):
+    """WebSocket without ticket query param is rejected with code 4001."""
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect("/api/v1/chat/ws"):
+            pass
+    assert exc_info.value.code == 4001
+
+
+@pytest.mark.unit
+def test_websocket_rejects_invalid_ticket(client, mock_deps):
+    """WebSocket with invalid ticket is rejected with code 4001."""
+    from starlette.websockets import WebSocketDisconnect
+
+    # Mock ws_tickets_collection for consume_ticket lookup
+    mock_ws_tickets = MagicMock()
+    mock_ws_tickets.find_one_and_update = AsyncMock(return_value=None)
+    mock_deps.ws_tickets_collection = mock_ws_tickets
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect("/api/v1/chat/ws?ticket=invalid-ticket"):
+            pass
+    assert exc_info.value.code == 4001
+
+
+@pytest.mark.unit
+def test_websocket_accepts_valid_ticket(client, mock_deps):
+    """WebSocket with valid ticket is accepted and resolves tenant."""
+    # Mock ws_tickets_collection to return a valid ticket doc
+    mock_ws_tickets = MagicMock()
+    mock_ws_tickets.find_one_and_update = AsyncMock(
+        return_value={"tenant_id": MOCK_TENANT_ID, "ticket_hash": "abc123"}
+    )
+    mock_deps.ws_tickets_collection = mock_ws_tickets
+    mock_deps.settings = MagicMock()
+
+    with client.websocket_connect("/api/v1/chat/ws?ticket=valid-ticket") as ws:
+        ws.send_json({"type": "cancel"})
+        response = ws.receive_json()
+        assert response["type"] == "cancelled"

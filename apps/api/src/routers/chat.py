@@ -12,6 +12,7 @@ from src.core.deps import get_deps
 from src.core.tenant import get_tenant_id
 from src.models.api import ChatRequest, ChatResponse, WSMessage
 from src.services.chat import ChatService, ConversationNotFoundError
+from src.services.ws_ticket import WSTicketService
 
 logger = logging.getLogger(__name__)
 
@@ -76,20 +77,27 @@ async def chat_endpoint(
 @router.websocket("/chat/ws")
 async def chat_websocket(
     websocket: WebSocket,
-    tenant_id: Optional[str] = None,
+    ticket: Optional[str] = None,
 ):
     """WebSocket endpoint for real-time chat.
 
-    Tenant ID is passed as query parameter: /api/v1/chat/ws?tenant_id=...
+    Authenticate via one-time ticket: /api/v1/chat/ws?ticket=<ticket>
+    Obtain a ticket from POST /api/v1/auth/ws-ticket first.
     """
-    if not tenant_id or not tenant_id.strip():
-        await websocket.close(code=4001, reason="tenant_id query parameter required")
+    if not ticket or not ticket.strip():
+        await websocket.close(code=4001, reason="ticket query parameter required")
         return
-    tenant_id = tenant_id.strip()
+
+    # Validate and consume the one-time ticket before accepting connection
+    deps: AgentDependencies = websocket.app.state.deps
+    ticket_service = WSTicketService(deps.ws_tickets_collection)
+    tenant_id = await ticket_service.consume_ticket(ticket.strip())
+
+    if not tenant_id:
+        await websocket.close(code=4001, reason="Invalid or expired ticket")
+        return
 
     await websocket.accept()
-    # Access deps from app state directly (WebSocket can't use Depends)
-    deps: AgentDependencies = websocket.app.state.deps
     service = ChatService(deps)
 
     try:

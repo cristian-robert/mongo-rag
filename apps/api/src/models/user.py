@@ -49,6 +49,10 @@ class PasswordResetTokenModel(BaseModel):
     """A password reset token (stored as SHA256 hash)."""
 
     user_id: str = Field(..., description="User this token belongs to")
+    tenant_id: Optional[str] = Field(
+        default=None,
+        description="Tenant this token belongs to; None for legacy tokens",
+    )
     token_hash: str = Field(..., description="SHA256 hash of the reset token")
     expires_at: datetime = Field(..., description="Token expiry time")
     used: bool = Field(default=False, description="Whether the token has been consumed")
