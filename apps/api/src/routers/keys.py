@@ -61,7 +61,7 @@ async def revoke_key(
     """Revoke an API key (soft delete)."""
     try:
         revoked = await service.revoke_key(key_id=key_id, tenant_id=tenant_id)
-    except (InvalidId, Exception):
+    except InvalidId:
         raise HTTPException(status_code=400, detail="Invalid key ID format")
 
     if not revoked:

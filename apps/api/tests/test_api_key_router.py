@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi.testclient import TestClient
 
 from tests.conftest import make_auth_header
@@ -146,7 +147,7 @@ def test_revoke_key_invalid_id_format(keys_client):
     """DELETE /api/v1/keys/{key_id} returns 400 for invalid ObjectId."""
     with patch("src.routers.keys.APIKeyService") as mock_service:
         instance = mock_service.return_value
-        instance.revoke_key = AsyncMock(side_effect=Exception("invalid ObjectId"))
+        instance.revoke_key = AsyncMock(side_effect=InvalidId("invalid ObjectId"))
 
         response = keys_client.delete(
             "/api/v1/keys/not-a-valid-id",
