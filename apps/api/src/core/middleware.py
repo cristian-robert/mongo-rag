@@ -43,6 +43,11 @@ class TenantGuardMiddleware(BaseHTTPMiddleware):
         if not path.startswith("/api/v1/"):
             return response
 
+        # Only warn on successful responses — 401/403 are expected when
+        # auth fails, and warning on those creates noise.
+        if response.status_code >= 400:
+            return response
+
         # Check if tenant context was set
         tenant_id = getattr(request.state, "tenant_id", None)
         if not tenant_id:

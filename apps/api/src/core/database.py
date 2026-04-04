@@ -10,35 +10,49 @@ from src.core.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-# IndexKeySpecsConflict error code — raised when an index exists with
-# the same key pattern but different options (e.g. adding unique=True).
-_INDEX_CONFLICT_CODE = 86
+# MongoDB error codes for index spec/option conflicts.
+_INDEX_CONFLICT_CODES = {
+    85,  # IndexOptionsConflict — same key pattern, different options
+    86,  # IndexKeySpecsConflict — same name, different key spec
+}
+
+
+def _normalize_key_pattern(keys) -> list[tuple[str, int]]:
+    """Normalize index keys to a list of (field, direction) tuples."""
+    if isinstance(keys, str):
+        return [(keys, 1)]
+    return [(k, v) for k, v in keys]
+
+
+async def _find_index_name(collection: AsyncCollection, keys) -> str | None:
+    """Find the name of an existing index matching the given key pattern."""
+    target = _normalize_key_pattern(keys)
+    indexes = await collection.index_information()
+    for name, info in indexes.items():
+        if info.get("key") == target:
+            return name
+    return None
 
 
 async def _create_index_safe(collection: AsyncCollection, keys, **kwargs) -> None:
     """Create an index, handling spec conflicts by drop-and-recreate.
 
     If an index with the same key pattern but different options exists,
-    drops it and recreates with the new options. This handles migrations
-    like adding unique=True to an existing index.
+    discovers the conflicting index name via index_information(), drops
+    it, and recreates with the new options. Handles both code 85
+    (IndexOptionsConflict) and 86 (IndexKeySpecsConflict).
     """
     try:
         await collection.create_index(keys, **kwargs)
     except OperationFailure as e:
-        if e.code == _INDEX_CONFLICT_CODE:
-            # Drop the conflicting index and recreate with new options.
+        if e.code in _INDEX_CONFLICT_CODES:
             logger.warning(
                 "index_spec_conflict_recreating",
                 extra={"collection": collection.name, "keys": str(keys)},
             )
-            # Build the auto-generated index name the same way MongoDB does:
-            # for "email" → "email_1", for [("a",1),("b",-1)] → "a_1_b_-1"
-            if isinstance(keys, str):
-                idx_name = f"{keys}_1"
-            else:
-                parts = [f"{k}_{v}" for k, v in keys]
-                idx_name = "_".join(parts)
-            await collection.drop_index(idx_name)
+            idx_name = await _find_index_name(collection, keys)
+            if idx_name:
+                await collection.drop_index(idx_name)
             await collection.create_index(keys, **kwargs)
         else:
             raise

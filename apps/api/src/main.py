@@ -37,7 +37,11 @@ async def lifespan(app: FastAPI):
 
     # Index creation is separate — failure is fatal because tenant
     # isolation guarantees depend on these indexes (e.g. unique email).
-    await ensure_indexes(deps.db, deps.settings)
+    try:
+        await ensure_indexes(deps.db, deps.settings)
+    except Exception:
+        await deps.cleanup()
+        raise
     logger.info("MongoRAG API started successfully")
     yield
     logger.info("Shutting down MongoRAG API...")

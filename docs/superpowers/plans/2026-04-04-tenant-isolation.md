@@ -8,6 +8,8 @@
 
 **Tech Stack:** FastAPI, Motor (async MongoDB), pytest + pytest-asyncio, python-jose (JWT)
 
+> **Post-implementation note (2026-04-04):** Task 3 (WebSocket auth) was revised during implementation after Codex adversarial review. The plan below describes `?token=<jwt>` but the actual implementation uses a one-time ticket system (`POST /api/v1/auth/ws-ticket` → `?ticket=`). See the design spec for the current approach. Additional fixes were also made: index failure is now fatal, reset tokens have backward compatibility for legacy docs, and the guard middleware only warns on successful responses.
+
 ---
 
 ## File Map

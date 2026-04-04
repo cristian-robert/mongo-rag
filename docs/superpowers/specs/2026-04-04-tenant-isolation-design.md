@@ -30,7 +30,7 @@ The MongoRAG API already has good tenant isolation in most areas — chat, inges
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Email uniqueness | Global (one account per email) | Simplifies auth, natural for SaaS where signup creates one tenant per user |
-| WebSocket auth | JWT/API key in query param | Standard pattern — browsers can't send headers on WebSocket upgrade |
+| WebSocket auth | One-time ticket via REST, then `?ticket=` | Avoids leaking long-lived credentials in URLs (logs, browser history) |
 | Tenant enforcement | Explicit DI + guard middleware | Keep working explicit pattern, add safety net for future endpoints |
 | DB operations wrapper | Not needed | Codebase is small, explicit passing is clearer than magic abstraction |
 
@@ -59,21 +59,25 @@ Login queries `users` collection by email only (`find_one({"email": email})`). I
 `/chat/ws` accepts `tenant_id` as a raw query parameter. Anyone can connect and impersonate any tenant — complete isolation bypass.
 
 ### Solution
-- Client connects with `ws://host/api/v1/chat/ws?token=<jwt_or_api_key>`
+- Client first calls `POST /api/v1/auth/ws-ticket` with a Bearer token (JWT or API key) to obtain a short-lived, single-use ticket
+- Client connects with `ws://host/api/v1/chat/ws?ticket=<one_time_ticket>`
 - On connection, before `websocket.accept()`:
-  1. Extract `token` from query params
-  2. If token starts with `mrag_` → resolve via `_resolve_api_key()`
-  3. Otherwise → validate JWT via `_resolve_jwt()`
-  4. Extract `tenant_id` from result
-  5. If invalid/missing → `websocket.close(code=4001, reason="...")`
+  1. Extract `ticket` from query params
+  2. Validate and atomically consume the ticket via `WSTicketService.consume_ticket()`
+  3. Extract `tenant_id` from the consumed ticket document
+  4. If invalid/missing/expired → `websocket.close(code=4001, reason="...")`
 - Remove the `tenant_id` query parameter entirely
+- Tickets expire after 30 seconds and are single-use — long-lived credentials (JWTs, API keys) never appear in the URL
 
 ### Breaking Change
-Frontend/widget clients must send JWT or API key instead of raw `tenant_id`. This is necessary — the current behavior is a vulnerability.
+Frontend/widget clients must first obtain a ticket via REST, then connect with `?ticket=`. This avoids leaking long-lived credentials into URLs (logs, browser history, analytics).
 
 ### Files Modified
-- `src/routers/chat.py` — rewrite WebSocket handler auth logic
-- `src/core/tenant.py` — extract auth resolution functions for reuse (may already be importable)
+- `src/routers/chat.py` — rewrite WebSocket handler to use ticket-based auth
+- `src/routers/auth.py` — add `POST /api/v1/auth/ws-ticket` endpoint
+- `src/services/ws_ticket.py` — new ticket service (create/consume)
+- `src/core/settings.py` — add `ws_tickets` collection config
+- `src/core/dependencies.py` — add `ws_tickets_collection` accessor
 
 ---
 
@@ -186,8 +190,13 @@ Integration tests using `httpx.AsyncClient` with FastAPI's `TestClient`. Test Mo
 | `src/main.py` | Register `TenantGuardMiddleware` |
 | `src/models/user.py` | Add `tenant_id` to `PasswordResetTokenModel` |
 | `src/services/auth.py` | Handle `DuplicateKeyError` in signup, scope reset tokens |
-| `src/routers/chat.py` | Rewrite WebSocket auth (JWT/API key from query param) |
-| `tests/test_tenant_isolation.py` | New — 11 negative isolation test cases |
+| `src/routers/chat.py` | Rewrite WebSocket auth (ticket-based) |
+| `src/routers/auth.py` | Add `POST /api/v1/auth/ws-ticket` endpoint |
+| `src/services/ws_ticket.py` | New — ticket create/consume service |
+| `src/core/settings.py` | Add `ws_tickets` collection config |
+| `src/core/dependencies.py` | Add `ws_tickets_collection` accessor |
+| `tests/test_tenant_isolation.py` | New — 10 negative isolation test cases |
+| `tests/test_ws_ticket.py` | New — ticket service and endpoint tests |
 
 ## Out of Scope
 - Repository pattern / `TenantScopedCollection` abstraction — not needed at current scale
