@@ -42,9 +42,7 @@ async def test_create_key_stores_sha256_hash(mock_api_keys_collection):
     from src.services.api_key import APIKeyService
 
     service = APIKeyService(api_keys_collection=mock_api_keys_collection)
-    result = await service.create_key(
-        tenant_id="tenant-abc", name="Test Key", permissions=["chat"]
-    )
+    result = await service.create_key(tenant_id="tenant-abc", name="Test Key", permissions=["chat"])
 
     # Verify insert_one was called
     mock_api_keys_collection.insert_one.assert_called_once()
@@ -66,12 +64,8 @@ async def test_create_key_generates_unique_keys(mock_api_keys_collection):
     from src.services.api_key import APIKeyService
 
     service = APIKeyService(api_keys_collection=mock_api_keys_collection)
-    result1 = await service.create_key(
-        tenant_id="tenant-abc", name="Key 1", permissions=["chat"]
-    )
-    result2 = await service.create_key(
-        tenant_id="tenant-abc", name="Key 2", permissions=["chat"]
-    )
+    result1 = await service.create_key(tenant_id="tenant-abc", name="Key 1", permissions=["chat"])
+    result2 = await service.create_key(tenant_id="tenant-abc", name="Key 2", permissions=["chat"])
 
     assert result1["raw_key"] != result2["raw_key"]
 

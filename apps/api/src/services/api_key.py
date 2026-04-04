@@ -47,9 +47,7 @@ class APIKeyService:
     def __init__(self, api_keys_collection: AsyncCollection) -> None:
         self._api_keys = api_keys_collection
 
-    async def create_key(
-        self, tenant_id: str, name: str, permissions: list[str]
-    ) -> dict[str, Any]:
+    async def create_key(self, tenant_id: str, name: str, permissions: list[str]) -> dict[str, Any]:
         """Generate a new API key and store its hash.
 
         Args:

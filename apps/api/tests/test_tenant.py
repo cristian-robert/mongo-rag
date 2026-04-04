@@ -13,7 +13,6 @@ from tests.conftest import JWT_SECRET, MOCK_TENANT_ID
 
 def _create_tenant_app():
     """Create a test app with tenant extraction."""
-    from src.core.deps import get_deps
     from src.core.tenant import get_tenant_id
 
     app = FastAPI()
