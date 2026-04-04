@@ -15,12 +15,23 @@ from jose import jwt
 JWT_SECRET = "test-secret-for-unit-tests-minimum-32chars"
 
 MOCK_TENANT_ID = "test-tenant-001"
+MOCK_TENANT_B_ID = "test-tenant-002"
 
 
 def make_auth_header(tenant_id: str = MOCK_TENANT_ID) -> dict:
     """Create Authorization header with JWT containing tenant_id."""
     token = jwt.encode(
         {"sub": "test-user", "tenant_id": tenant_id, "role": "owner"},
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+    return {"Authorization": f"Bearer {token}"}
+
+
+def make_auth_header_b(tenant_id: str = MOCK_TENANT_B_ID) -> dict:
+    """Create Authorization header for Tenant B."""
+    token = jwt.encode(
+        {"sub": "test-user-b", "tenant_id": tenant_id, "role": "owner"},
         JWT_SECRET,
         algorithm="HS256",
     )
