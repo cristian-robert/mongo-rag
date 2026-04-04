@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
     try:
         await deps.initialize()
         app.state.deps = deps
-        await ensure_indexes(deps.db)
+        await ensure_indexes(deps.db, deps.settings)
         logger.info("MongoRAG API started successfully")
     except Exception as e:
         logger.error("Failed to initialize: %s", e)
