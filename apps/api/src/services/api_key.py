@@ -11,8 +11,8 @@ from pymongo.asynchronous.collection import AsyncCollection
 
 logger = logging.getLogger(__name__)
 
-# Base62 alphabet: 0-9, A-Z, a-z
-_BASE62_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+# Base62 alphabet: 0-9, a-z, A-Z
+_BASE62_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
 def _base62_encode(data: bytes) -> str:
