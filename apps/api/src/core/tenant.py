@@ -73,7 +73,7 @@ async def _resolve_api_key(raw_key: str, deps: AgentDependencies) -> str:
     if doc.get("is_revoked", False):
         raise HTTPException(status_code=401, detail="API key has been revoked")
 
-    # Fire-and-forget: update last_used_at
+    # Update last_used_at (blocking at MVP scale; optimize if needed)
     await deps.api_keys_collection.update_one(
         {"key_hash": key_hash},
         {"$set": {"last_used_at": datetime.now(timezone.utc)}},

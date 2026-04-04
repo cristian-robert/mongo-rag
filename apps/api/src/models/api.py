@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 # --- Ingestion ---
 
@@ -126,6 +126,9 @@ class MessageResponse(BaseModel):
 # --- API Keys ---
 
 
+VALID_PERMISSIONS = {"chat", "search"}
+
+
 class CreateKeyRequest(BaseModel):
     """Request body for creating an API key."""
 
@@ -134,6 +137,15 @@ class CreateKeyRequest(BaseModel):
         default_factory=lambda: ["chat", "search"],
         description="Allowed operations",
     )
+
+    @field_validator("permissions")
+    @classmethod
+    def validate_permissions(cls, v: list[str]) -> list[str]:
+        """Ensure all permissions are from the known set."""
+        invalid = set(v) - VALID_PERMISSIONS
+        if invalid:
+            raise ValueError(f"Invalid permissions: {invalid}")
+        return v
 
 
 class CreateKeyResponse(BaseModel):

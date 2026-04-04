@@ -110,17 +110,6 @@ class APIKeyService:
             "key_id": str(doc["_id"]),
         }
 
-    async def update_last_used(self, key_hash: str) -> None:
-        """Update the last_used_at timestamp for a key.
-
-        Args:
-            key_hash: SHA-256 hash of the API key.
-        """
-        await self._api_keys.update_one(
-            {"key_hash": key_hash},
-            {"$set": {"last_used_at": datetime.now(timezone.utc)}},
-        )
-
     async def list_keys(self, tenant_id: str) -> list[dict[str, Any]]:
         """List all API keys for a tenant.
 
