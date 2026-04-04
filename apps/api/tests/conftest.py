@@ -39,6 +39,7 @@ def mock_deps():
     deps.documents_collection = MagicMock()
     deps.chunks_collection = MagicMock()
     deps.conversations_collection = MagicMock()
+    deps.api_keys_collection = MagicMock()
     return deps
 
 
