@@ -6,6 +6,7 @@ import secrets
 from datetime import datetime, timezone
 from typing import Any
 
+from bson import ObjectId
 from pymongo.asynchronous.collection import AsyncCollection
 
 logger = logging.getLogger(__name__)
@@ -121,3 +122,56 @@ class APIKeyService:
             {"key_hash": key_hash},
             {"$set": {"last_used_at": datetime.now(timezone.utc)}},
         )
+
+    async def list_keys(self, tenant_id: str) -> list[dict[str, Any]]:
+        """List all API keys for a tenant.
+
+        Args:
+            tenant_id: Tenant to list keys for.
+
+        Returns:
+            List of key metadata dicts (excludes key_hash).
+        """
+        cursor = self._api_keys.find(
+            {"tenant_id": tenant_id},
+            {"key_hash": 0},  # Never return the hash
+        ).sort("created_at", -1)
+
+        keys = await cursor.to_list(length=100)
+
+        return [
+            {
+                "id": str(doc["_id"]),
+                "key_prefix": doc["key_prefix"],
+                "name": doc["name"],
+                "permissions": doc["permissions"],
+                "is_revoked": doc["is_revoked"],
+                "last_used_at": doc.get("last_used_at"),
+                "created_at": doc["created_at"],
+            }
+            for doc in keys
+        ]
+
+    async def revoke_key(self, key_id: str, tenant_id: str) -> bool:
+        """Revoke an API key (soft delete).
+
+        Args:
+            key_id: MongoDB _id of the key document.
+            tenant_id: Tenant the key must belong to (isolation guard).
+
+        Returns:
+            True if key was revoked, False if not found or wrong tenant.
+        """
+        result = await self._api_keys.update_one(
+            {"_id": ObjectId(key_id), "tenant_id": tenant_id},
+            {"$set": {"is_revoked": True}},
+        )
+
+        if result.matched_count == 0:
+            return False
+
+        logger.info(
+            "api_key_revoked",
+            extra={"key_id": key_id, "tenant_id": tenant_id},
+        )
+        return True
