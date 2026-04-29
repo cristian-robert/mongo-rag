@@ -24,7 +24,5 @@ class InvitationModel(BaseModel):
     accepted_at: Optional[datetime] = Field(
         default=None, description="When the invite was accepted"
     )
-    revoked_at: Optional[datetime] = Field(
-        default=None, description="When the invite was revoked"
-    )
+    revoked_at: Optional[datetime] = Field(default=None, description="When the invite was revoked")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

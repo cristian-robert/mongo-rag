@@ -61,20 +61,12 @@ class _JWKSCache:
 
     async def get(self, url: str, ttl_seconds: int) -> dict[str, Any]:
         now = time.monotonic()
-        if (
-            self._jwks is not None
-            and self._url == url
-            and now - self._fetched_at < ttl_seconds
-        ):
+        if self._jwks is not None and self._url == url and now - self._fetched_at < ttl_seconds:
             return self._jwks
 
         async with self._lock:
             now = time.monotonic()
-            if (
-                self._jwks is not None
-                and self._url == url
-                and now - self._fetched_at < ttl_seconds
-            ):
+            if self._jwks is not None and self._url == url and now - self._fetched_at < ttl_seconds:
                 return self._jwks
 
             async with httpx.AsyncClient(timeout=5.0) as client:

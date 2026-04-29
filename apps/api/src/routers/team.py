@@ -122,9 +122,7 @@ async def list_invitations(
     service: TeamService = Depends(_service),
 ):
     invites = await service.list_invitations(principal.tenant_id)
-    return InvitationListResponse(
-        invitations=[InvitationResponse(**i) for i in invites]
-    )
+    return InvitationListResponse(invitations=[InvitationResponse(**i) for i in invites])
 
 
 @router.post(
