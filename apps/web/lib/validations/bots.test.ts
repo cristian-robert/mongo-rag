@@ -78,10 +78,9 @@ describe("createBotSchema", () => {
 });
 
 describe("updateBotSchema", () => {
-  it("rejects slug field if provided", () => {
+  it("strips slug field if provided (immutable post-create)", () => {
     const result = updateBotSchema.safeParse({
       name: "Updated",
-      // @ts-expect-error — slug is omitted from update schema
       slug: "different-slug",
     });
     // Slug is `omit`ed; extra keys are stripped silently, parse should succeed
