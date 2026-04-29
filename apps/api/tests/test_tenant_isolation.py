@@ -82,35 +82,41 @@ def test_document_status_scoped_to_tenant(client, mock_deps):
 
 @pytest.mark.unit
 def test_list_keys_scoped_to_tenant(client, mock_deps):
-    """List keys only returns keys for authenticated tenant."""
-    with patch("src.routers.keys.APIKeyService") as mock_service:
-        instance = mock_service.return_value
-        instance.list_keys = AsyncMock(return_value=[])
+    """List keys only returns keys for authenticated tenant (Postgres path, #42)."""
+    from src.core.deps import get_pg_pool
+    from src.main import app
 
-        response = client.get(
-            "/api/v1/keys",
-            headers=make_auth_header(),
-        )
+    fake_pool = MagicMock(name="pg_pool")
+    app.dependency_overrides[get_pg_pool] = lambda: fake_pool
+    try:
+        with patch("src.routers.keys.pg_api_keys.list_keys", new_callable=AsyncMock) as listfn:
+            listfn.return_value = []
+            response = client.get("/api/v1/keys", headers=make_auth_header())
 
-    assert response.status_code == 200
-    instance.list_keys.assert_called_once_with(MOCK_TENANT_ID)
+        assert response.status_code == 200
+        listfn.assert_called_once_with(pool=fake_pool, tenant_id=MOCK_TENANT_ID)
+    finally:
+        app.dependency_overrides.pop(get_pg_pool, None)
 
 
 @pytest.mark.unit
 def test_revoke_key_scoped_to_tenant(client, mock_deps):
-    """Revoke key only works for the authenticated tenant's keys."""
-    key_id = str(ObjectId())
+    """Revoke key only works for the authenticated tenant's keys (Postgres path, #42)."""
+    from uuid import uuid4
 
-    with patch("src.routers.keys.APIKeyService") as mock_service:
-        instance = mock_service.return_value
-        instance.revoke_key = AsyncMock(return_value=True)
+    from src.core.deps import get_pg_pool
+    from src.main import app
 
-        client.delete(
-            f"/api/v1/keys/{key_id}",
-            headers=make_auth_header(),
-        )
-
-    instance.revoke_key.assert_called_once_with(key_id=key_id, tenant_id=MOCK_TENANT_ID)
+    fake_pool = MagicMock(name="pg_pool")
+    app.dependency_overrides[get_pg_pool] = lambda: fake_pool
+    key_id = str(uuid4())
+    try:
+        with patch("src.routers.keys.pg_api_keys.revoke_key", new_callable=AsyncMock) as revoke:
+            revoke.return_value = True
+            client.delete(f"/api/v1/keys/{key_id}", headers=make_auth_header())
+        revoke.assert_called_once_with(pool=fake_pool, key_id=key_id, tenant_id=MOCK_TENANT_ID)
+    finally:
+        app.dependency_overrides.pop(get_pg_pool, None)
 
 
 # -- Search Isolation ---------------------------------------------------------

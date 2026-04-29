@@ -3,6 +3,8 @@
 Used by:
 - Stripe webhook handler (#43) — writes `subscriptions` and `stripe_events`
   using the service-role key path (bypasses RLS).
+- API key validation (#42) — looks up `public.api_keys` before any user
+  session exists; tenant isolation is enforced explicitly in every query.
 - Future Postgres-backed identity / billing modules.
 
 This module deliberately keeps the API surface tiny — `get_pool` returns a
@@ -11,6 +13,8 @@ lazily-created `asyncpg.Pool`. Callers acquire connections via
 
 Concurrency note: pool creation is guarded by an asyncio.Lock so that
 concurrent first-callers do not race to create two pools.
+
+DSN safety: the DSN itself is never logged; only error class on failure.
 """
 
 from __future__ import annotations
@@ -70,6 +74,23 @@ async def get_pool(settings: Settings) -> asyncpg.Pool:
                 },
             )
     return _pool
+
+
+async def try_get_pool(settings: Settings) -> Optional[asyncpg.Pool]:
+    """Best-effort accessor — returns ``None`` when Postgres is unconfigured
+    or unreachable.
+
+    Used at app startup (#42) so that an unconfigured Postgres does not take
+    the API down; callers (API key validation) fall back to the legacy path.
+    """
+    try:
+        return await get_pool(settings)
+    except PostgresUnavailableError:
+        logger.info("postgres_pool_unconfigured")
+        return None
+    except Exception:
+        logger.exception("postgres_pool_init_failed")
+        return None
 
 
 async def close_pool() -> None:
