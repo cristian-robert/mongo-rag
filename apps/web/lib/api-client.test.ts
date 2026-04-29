@@ -8,6 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { jwtVerify } from "jose";
+import type { ApiError as ApiErrorType } from "./api-client";
 
 // next-auth must be mocked before importing api-client because the module
 // imports `auth` eagerly via `@/lib/auth`.
@@ -97,10 +98,10 @@ describe("apiFetch", () => {
     );
 
     const { apiFetch, ApiError } = await import("./api-client");
-    const err = await apiFetch("/api/v1/chat").catch((e) => e);
+    const err = await apiFetch("/api/v1/chat").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
-    expect(err.status).toBe(429);
-    expect(err.message).toBe("quota exceeded");
+    expect((err as ApiErrorType).status).toBe(429);
+    expect((err as ApiErrorType).message).toBe("quota exceeded");
   });
 
   it("falls back to a generic message when the error body is unparseable", async () => {
@@ -112,9 +113,10 @@ describe("apiFetch", () => {
       vi.fn().mockResolvedValue(new Response("<html>500</html>", { status: 500 })),
     );
 
-    const { apiFetch } = await import("./api-client");
-    const err = await apiFetch("/api/v1/anything").catch((e) => e);
-    expect(err.status).toBe(500);
-    expect(err.message).toMatch(/Request failed \(500\)/);
+    const { apiFetch, ApiError } = await import("./api-client");
+    const err = await apiFetch("/api/v1/anything").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiErrorType).status).toBe(500);
+    expect((err as ApiErrorType).message).toMatch(/Request failed \(500\)/);
   });
 });
