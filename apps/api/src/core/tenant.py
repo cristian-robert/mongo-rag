@@ -2,7 +2,9 @@
 
 Three supported credential formats on `Authorization: Bearer <token>`:
 
-1. `mrag_...` API key — hashed and looked up in the api_keys collection.
+1. `mrag_...` API key — validated against Postgres `public.api_keys` (issue
+   #42). The legacy MongoDB-backed sha256 lookup is kept behind
+   ``API_KEY_BACKEND=mongo`` for emergency rollback only.
 2. Supabase user JWT — verified via JWKS or a configured shared secret;
    `tenant_id` is taken from claims or, as a fallback, derived from the
    user document keyed by Supabase `sub`.
@@ -21,6 +23,7 @@ from typing import Optional
 
 from fastapi import Depends, Header, HTTPException, Request
 
+from src.auth import api_keys as pg_api_keys
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
 from src.core.observability import set_request_context
@@ -34,7 +37,7 @@ from src.core.supabase_auth import (
 
 logger = logging.getLogger(__name__)
 
-_API_KEY_PREFIX = "mrag_"
+_API_KEY_PREFIX = pg_api_keys.KEY_PREFIX
 
 
 async def get_tenant_id(
@@ -45,7 +48,8 @@ async def get_tenant_id(
     """Extract tenant_id from JWT or API key in the Authorization header.
 
     Args:
-        request: The incoming request (used to set tenant context on state).
+        request: The incoming request (used to set tenant context on state
+            and read the Postgres pool from app.state).
         authorization: Authorization header value.
         deps: Application dependencies for DB access.
 
@@ -53,7 +57,8 @@ async def get_tenant_id(
         Validated tenant_id string.
 
     Raises:
-        HTTPException: 401 if token is missing, invalid, or lacks tenant_id.
+        HTTPException: 401 if the credential is missing, invalid, or
+            cannot be resolved to a tenant.
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -61,10 +66,10 @@ async def get_tenant_id(
             detail="Authorization header with Bearer token is required",
         )
 
-    token = authorization[7:]  # Strip "Bearer "
+    token = authorization[7:]
 
     if token.startswith(_API_KEY_PREFIX):
-        tenant_id = await _resolve_api_key(token, deps)
+        tenant_id = await _resolve_api_key(token, request, deps)
     else:
         tenant_id = await _resolve_jwt(token, deps)
 
@@ -73,8 +78,33 @@ async def get_tenant_id(
     return tenant_id
 
 
-async def _resolve_api_key(raw_key: str, deps: AgentDependencies) -> str:
-    """Validate an API key and return its tenant_id."""
+async def _resolve_api_key(
+    raw_key: str, request: Request, deps: AgentDependencies
+) -> str:
+    """Validate an API key and return its tenant_id.
+
+    Postgres is the default. Falls back to Mongo when:
+      - ``API_KEY_BACKEND=mongo`` is set, OR
+      - the Postgres pool is unavailable (graceful degradation during
+        the rollout window).
+
+    All failure modes return the same opaque 401 to avoid leaking which
+    branch failed (revoked vs. unknown vs. backend down).
+    """
+    settings = load_settings()
+    pool = getattr(request.app.state, "pg_pool", None)
+
+    if settings.api_key_backend == "postgres" and pool is not None:
+        principal = await pg_api_keys.verify_key(pool, raw_key)
+        if principal is None:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        return principal.tenant_id
+
+    return await _resolve_api_key_mongo(raw_key, deps)
+
+
+async def _resolve_api_key_mongo(raw_key: str, deps: AgentDependencies) -> str:
+    """Mongo-backed validation kept for rollback (set ``API_KEY_BACKEND=mongo``)."""
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
     doc = await deps.api_keys_collection.find_one({"key_hash": key_hash})
 
@@ -82,7 +112,8 @@ async def _resolve_api_key(raw_key: str, deps: AgentDependencies) -> str:
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     if doc.get("is_revoked", False):
-        raise HTTPException(status_code=401, detail="API key has been revoked")
+        # Same opaque 401 as unknown-key — don't leak revocation state.
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
     await deps.api_keys_collection.update_one(
         {"key_hash": key_hash},
@@ -141,7 +172,6 @@ async def _resolve_jwt(token: str, deps: AgentDependencies) -> str:
             raise HTTPException(status_code=401, detail="Invalid or expired token") from None
         return await _tenant_id_from_supabase_claims(claims, deps)
 
-    # Legacy NextAuth path
     return _resolve_nextauth_jwt(token, settings)
 
 

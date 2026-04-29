@@ -123,7 +123,9 @@ def test_revoked_api_key_returns_401(api_key_app):
 
     response = client.get("/test", headers={"Authorization": f"Bearer {raw_key}"})
     assert response.status_code == 401
-    assert "revoked" in response.json()["detail"].lower()
+    # Detail is intentionally opaque — revoked vs unknown indistinguishable
+    # to avoid leaking which lookup branch failed (#42 hardening).
+    assert "Invalid API key" in response.json()["detail"]
 
 
 @pytest.mark.unit

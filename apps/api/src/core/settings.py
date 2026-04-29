@@ -1,6 +1,6 @@
 """Settings configuration for MongoDB RAG Agent."""
 
-from typing import Optional
+from typing import Literal, Optional
 
 from dotenv import load_dotenv
 from pydantic import ConfigDict, Field
@@ -348,6 +348,16 @@ class Settings(BaseSettings):
     reset_email_from: str = Field(
         default="noreply@mongorag.com",
         description="From address for password reset emails",
+    )
+
+    # API key validation backend (#42) -- Postgres connection itself is
+    # configured via SUPABASE_DB_URL on the existing pool (`src.core.postgres`).
+    api_key_backend: Literal["postgres", "mongo"] = Field(
+        default="postgres",
+        description=(
+            "Which store to validate API keys against. 'postgres' is the new "
+            "default (#42); 'mongo' is kept for emergency rollback."
+        ),
     )
 
     # Stripe Configuration

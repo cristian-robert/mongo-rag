@@ -15,6 +15,7 @@ from src.core.middleware import (
     TenantGuardMiddleware,
 )
 from src.core.observability import configure_logging, init_sentry
+from src.core.postgres import close_pool, try_get_pool
 from src.core.request_logging import RequestLoggingMiddleware, install_exception_handlers
 from src.core.settings import load_settings
 from src.routers.analytics import router as analytics_router
@@ -70,17 +71,20 @@ async def lifespan(app: FastAPI):
     except Exception:
         await deps.cleanup()
         raise
+
+    # Warm up the Supabase Postgres pool for API key validation (#42).
+    # `try_get_pool` returns None when SUPABASE_DB_URL is unset or unreachable;
+    # API key auth then falls back to the Mongo path until config is fixed.
+    app.state.pg_pool = await try_get_pool(deps.settings)
+
     logger.info("api_started")
     yield
     logger.info("api_shutting_down")
-    await deps.cleanup()
-    # Close the Postgres pool if it was lazily created.
     try:
-        from src.core.postgres import close_pool
-
         await close_pool()
     except Exception:
         logger.exception("postgres_pool_close_failed")
+    await deps.cleanup()
 
 
 app = FastAPI(
