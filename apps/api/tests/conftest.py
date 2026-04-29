@@ -5,7 +5,7 @@ import os
 # Set required env var defaults BEFORE any app imports trigger Settings loading
 os.environ.setdefault("NEXTAUTH_SECRET", "test-secret-for-unit-tests-minimum-32chars")
 os.environ.setdefault("RESEND_API_KEY", "re_test_placeholder")
-os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017/test")
+os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017/mongorag-test")
 os.environ.setdefault("LLM_API_KEY", "test-llm-key")
 os.environ.setdefault("EMBEDDING_API_KEY", "test-embedding-key")
 

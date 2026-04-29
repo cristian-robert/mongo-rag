@@ -10,6 +10,7 @@ from src.core.database import ensure_indexes
 from src.core.dependencies import AgentDependencies
 from src.core.middleware import TenantGuardMiddleware
 from src.routers.auth import router as auth_router
+from src.routers.billing import router as billing_router
 from src.routers.chat import router as chat_router
 from src.routers.health import router as health_router
 from src.routers.ingest import router as ingest_router
@@ -75,3 +76,4 @@ app.include_router(chat_router)
 app.include_router(auth_router)
 app.include_router(keys_router)
 app.include_router(usage_router)
+app.include_router(billing_router)
