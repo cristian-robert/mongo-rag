@@ -1,0 +1,12 @@
+# Synthetic smoke-test dataset for the RAG eval harness.
+# One JSON object per line. Lines starting with '#' are ignored.
+{"id": "q1", "question": "What is the default RRF constant used in hybrid search?", "expected_answer": "60", "expected_chunk_ids": ["chunk-rrf-001"], "expected_doc_ids": ["doc-search-design"], "tags": ["search", "rrf"]}
+{"id": "q2", "question": "Which embedding model does MongoRAG use by default?", "expected_answer": "text-embedding-3-small", "expected_chunk_ids": ["chunk-embed-001", "chunk-embed-002"], "expected_doc_ids": ["doc-providers"], "tags": ["providers"]}
+{"id": "q3", "question": "How is tenant isolation enforced for chunk queries?", "expected_answer": "Every MongoDB query filters by tenant_id", "expected_chunk_ids": ["chunk-tenancy-001"], "expected_doc_ids": ["doc-tenancy"], "tags": ["security"]}
+{"id": "q4", "question": "What chunker library does the ingestion pipeline use?", "expected_answer": "Docling HybridChunker", "expected_chunk_ids": ["chunk-ingest-001"], "expected_doc_ids": ["doc-ingestion"], "tags": ["ingestion"]}
+{"id": "q5", "question": "How many dimensions does the default embedding produce?", "expected_answer": "1536", "expected_chunk_ids": ["chunk-embed-002"], "expected_doc_ids": ["doc-providers"], "tags": ["providers"]}
+{"id": "q6", "question": "Which Atlas tier supports Vector Search?", "expected_answer": "M0 (free tier)", "expected_chunk_ids": ["chunk-atlas-001"], "expected_doc_ids": ["doc-atlas"], "tags": ["mongo"]}
+{"id": "q7", "question": "What Pydantic feature is used for configuration?", "expected_answer": "Pydantic Settings", "expected_chunk_ids": ["chunk-config-001"], "expected_doc_ids": ["doc-config"], "tags": ["config"]}
+{"id": "q8", "question": "Name one supported LLM provider.", "expected_answer": "OpenAI", "expected_chunk_ids": ["chunk-providers-001", "chunk-providers-002"], "expected_doc_ids": ["doc-providers"], "tags": ["providers"]}
+{"id": "q9", "question": "What text search feature is enabled in Atlas Search?", "expected_answer": "fuzzy matching", "expected_chunk_ids": ["chunk-search-fuzzy"], "expected_doc_ids": ["doc-search-design"], "tags": ["search"]}
+{"id": "q10", "question": "Which package manager does the API use?", "expected_answer": "uv", "expected_chunk_ids": ["chunk-tooling-001"], "expected_doc_ids": ["doc-tooling"], "tags": ["tooling"]}
