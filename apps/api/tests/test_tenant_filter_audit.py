@@ -127,6 +127,13 @@ _ALLOWLIST: list[tuple[str, str, str]] = [
         "delete_one",
         "Migration version record — global infra, no tenant data",
     ),
+    # --- Team invitation claim ---------------------------------------------
+    (
+        "services/team.py",
+        "find_one_and_update",
+        "Invite claim is keyed by SHA256(token_hash); the token IS the secret. "
+        "After claim the recovered tenant_id is the only one used downstream.",
+    ),
     # --- WebSocket ticket consume -------------------------------------------
     (
         "services/ws_ticket.py",

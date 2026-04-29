@@ -43,6 +43,17 @@ Never trust a tenant_id sent from the client body or query string. The FastAPI d
 
 Every MongoDB query that touches a tenant-scoped collection must include `tenant_id` in the filter — even reads that look "internal," even aggregation pipelines, even the `$vectorSearch` filter (push it in, never post-filter).
 
+### Common bug
+
+```python
+# WRONG — leaks across tenants when document_id collides
+results = await db.chunks.find({"document_id": doc_id}).to_list(100)
+
+# CORRECT (helper enforces the principal's tenant_id)
+filt = tenant_filter(principal, document_id=doc_id)
+results = await db.chunks.find(filt).to_list(100)
+```
+
 ### Atlas Search and Vector Search
 
 For `$search` and `$vectorSearch` you cannot filter after the fact — you must push the tenant filter into the operator's `filter` clause so the search engine restricts the candidate set before ranking.
