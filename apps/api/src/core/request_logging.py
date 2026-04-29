@@ -12,6 +12,7 @@ import time
 from typing import Awaitable, Callable
 
 from fastapi import FastAPI, HTTPException
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -100,7 +101,7 @@ def install_exception_handlers(app: FastAPI) -> None:
         )
         return JSONResponse(
             status_code=422,
-            content={"detail": exc.errors(), "request_id": _rid(request)},
+            content=jsonable_encoder({"detail": exc.errors(), "request_id": _rid(request)}),
         )
 
     @app.exception_handler(HTTPException)
