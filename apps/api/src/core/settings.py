@@ -358,6 +358,33 @@ class Settings(BaseSettings):
         description="Stripe webhook signing secret (whsec_...) — used by webhook handler in #43",
     )
 
+    stripe_webhook_tolerance_seconds: int = Field(
+        default=300,
+        ge=30,
+        le=3600,
+        description=(
+            "Replay-attack tolerance window in seconds for Stripe webhook timestamp "
+            "verification. Stripe's default is 300 (5 minutes)."
+        ),
+    )
+
+    # Supabase Postgres connection — used by webhook handler (service-role, bypasses RLS).
+    supabase_db_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Postgres connection string for Supabase (asyncpg-compatible). When unset, "
+            "Postgres-backed operations (e.g. Stripe webhook persistence) raise 503."
+        ),
+    )
+
+    supabase_db_pool_min: int = Field(
+        default=1, ge=0, le=20, description="asyncpg pool minimum size"
+    )
+
+    supabase_db_pool_max: int = Field(
+        default=5, ge=1, le=50, description="asyncpg pool maximum size"
+    )
+
     # Observability Configuration
     log_level: str = Field(
         default="INFO",
