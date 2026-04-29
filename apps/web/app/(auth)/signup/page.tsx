@@ -68,7 +68,7 @@ export default function SignupPage() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/onboarding/welcome");
       router.refresh();
     } catch {
       toast.error("Something went wrong. Please try again.");

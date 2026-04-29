@@ -124,27 +124,12 @@ export const logger = {
   },
 };
 
-/** Generate a fresh request_id (UUIDv4). */
-export function newRequestId(): string {
-  // Browsers and modern Node both support crypto.randomUUID
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID().replace(/-/g, "");
-  }
-  // Fallback — RFC 4122 v4 from Math.random (only ever hit in ancient runtimes).
-  return "xxxxxxxxxxxx4xxxyxxxxxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-/** Validate a request_id is safe to forward upstream (no log injection). */
-export function isSafeRequestId(value: string): boolean {
-  if (!value || value.length > 64) return false;
-  return /^[A-Za-z0-9_-]+$/.test(value);
-}
-
-export const REQUEST_ID_HEADER = "x-request-id";
+// Re-export the edge-safe request_id helpers so existing imports keep working.
+export {
+  REQUEST_ID_HEADER,
+  isSafeRequestId,
+  newRequestId,
+} from "./request-id";
 
 /** Internal — exported only for tests. */
 export const _internal = { redactField, redactValue, buildPayload };

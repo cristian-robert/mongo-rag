@@ -2,6 +2,7 @@
 
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Children, cloneElement, isValidElement } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -42,19 +43,47 @@ const buttonVariants = cva(
   }
 )
 
+type ButtonProps = ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> & {
+    /**
+     * When true, renders the single child element as the root and merges the
+     * Button's classes/props onto it. Useful for `<Button asChild><Link/></Button>`.
+     */
+    asChild?: boolean
+  }
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  asChild = false,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonProps) {
+  const composedClass = cn(buttonVariants({ variant, size, className }))
+
+  if (asChild) {
+    const child = Children.only(children)
+    if (!isValidElement<{ className?: string }>(child)) {
+      return null
+    }
+    return cloneElement(child, {
+      "data-slot": "button",
+      ...(props as Record<string, unknown>),
+      className: cn(composedClass, child.props.className),
+    } as Record<string, unknown>)
+  }
+
   return (
     <ButtonPrimitive
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={composedClass}
       {...props}
-    />
+    >
+      {children}
+    </ButtonPrimitive>
   )
 }
 
 export { Button, buttonVariants }
+export type { ButtonProps }
