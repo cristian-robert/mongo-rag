@@ -26,6 +26,7 @@ from src.routers.documents import router as documents_router
 from src.routers.health import router as health_router
 from src.routers.ingest import router as ingest_router
 from src.routers.keys import router as keys_router
+from src.routers.stripe_webhooks import router as stripe_webhooks_router
 from src.routers.team import router as team_router
 from src.routers.usage import router as usage_router
 from src.routers.webhooks import router as webhooks_router
@@ -73,6 +74,13 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("api_shutting_down")
     await deps.cleanup()
+    # Close the Postgres pool if it was lazily created.
+    try:
+        from src.core.postgres import close_pool
+
+        await close_pool()
+    except Exception:
+        logger.exception("postgres_pool_close_failed")
 
 
 app = FastAPI(
@@ -157,6 +165,7 @@ app.include_router(auth_router)
 app.include_router(keys_router)
 app.include_router(usage_router)
 app.include_router(billing_router)
+app.include_router(stripe_webhooks_router)
 app.include_router(bots_router)
 app.include_router(analytics_router)
 app.include_router(team_router)

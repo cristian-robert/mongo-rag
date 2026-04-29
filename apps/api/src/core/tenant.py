@@ -158,9 +158,7 @@ def _resolve_nextauth_jwt(token: str, settings: Settings) -> str:
     return tenant_id
 
 
-async def _tenant_id_from_supabase_claims(
-    claims: SupabaseClaims, deps: AgentDependencies
-) -> str:
+async def _tenant_id_from_supabase_claims(claims: SupabaseClaims, deps: AgentDependencies) -> str:
     """Resolve tenant_id from Supabase claims, falling back to a DB lookup.
 
     Order of preference:
@@ -186,5 +184,3 @@ async def _tenant_id_from_supabase_claims(
         )
         raise HTTPException(status_code=401, detail="User has no tenant assigned")
     return tenant_id
-
-

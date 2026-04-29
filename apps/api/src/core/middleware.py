@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 # Routes exempt from tenant guard checks
 _EXEMPT_PREFIXES = (
     "/api/v1/auth",
+    "/api/v1/stripe",  # webhooks: signed by Stripe, no tenant JWT
+    "/api/v1/billing/plans",  # public pricing catalog
     "/health",
     "/docs",
     "/openapi.json",
