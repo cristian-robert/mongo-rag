@@ -351,3 +351,90 @@ class KeyListResponse(BaseModel):
     """List of API keys for a tenant."""
 
     keys: list[KeyResponse]
+
+
+# --- Team / RBAC ---
+
+
+TeamRole = Literal["owner", "admin", "member", "viewer"]
+
+
+class MemberResponse(BaseModel):
+    """A team member as exposed to the dashboard."""
+
+    id: str
+    email: str
+    name: str
+    role: TeamRole
+    is_active: bool
+    created_at: datetime
+
+
+class MemberListResponse(BaseModel):
+    members: list[MemberResponse]
+
+
+class UpdateMemberRoleRequest(BaseModel):
+    role: TeamRole = Field(..., description="New role for the member")
+
+
+class InvitationResponse(BaseModel):
+    """A pending or historical invitation."""
+
+    id: str
+    email: str
+    role: TeamRole
+    expires_at: datetime
+    accepted_at: Optional[datetime] = None
+    revoked_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class InvitationListResponse(BaseModel):
+    invitations: list[InvitationResponse]
+
+
+class CreateInvitationRequest(BaseModel):
+    email: EmailStr
+    role: TeamRole = Field(default="member")
+
+
+class CreateInvitationResponse(BaseModel):
+    invitation: InvitationResponse
+    accept_url: str = Field(..., description="One-time invite link — shown once")
+
+
+class AcceptInvitationRequest(BaseModel):
+    """Used by an already-authenticated user to accept their invite."""
+
+    token: str = Field(..., min_length=10)
+
+
+class AcceptInvitationSignupRequest(BaseModel):
+    """Used by a new user to sign up and accept an invite atomically."""
+
+    token: str = Field(..., min_length=10)
+    password: str = Field(..., min_length=8, max_length=128)
+    name: str = Field(default="", max_length=100)
+
+
+class InvitationPreviewResponse(BaseModel):
+    """Public, non-sensitive preview of an invite (for the accept page)."""
+
+    email: str
+    role: TeamRole
+    organization_name: str
+    expires_at: datetime
+    requires_signup: bool = Field(
+        ..., description="True if no account exists for this email yet"
+    )
+
+
+class MeResponse(BaseModel):
+    """Current user/principal — used by the web dashboard for role gating."""
+
+    user_id: str
+    tenant_id: str
+    email: str
+    name: str
+    role: TeamRole

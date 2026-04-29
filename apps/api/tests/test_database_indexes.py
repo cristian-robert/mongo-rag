@@ -22,6 +22,7 @@ async def test_ensure_indexes_creates_expected_indexes():
         "ws_tickets",
         "usage",
         "bots",
+        "invitations",
     ]:
         mock_col = MagicMock()
         mock_col.create_index = AsyncMock()
@@ -41,6 +42,7 @@ async def test_ensure_indexes_creates_expected_indexes():
     mock_settings.mongodb_collection_ws_tickets = "ws_tickets"
     mock_settings.mongodb_collection_usage = "usage"
     mock_settings.mongodb_collection_bots = "bots"
+    mock_settings.mongodb_collection_invitations = "invitations"
 
     await ensure_indexes(mock_db, mock_settings)
 
@@ -98,4 +100,14 @@ async def test_ensure_indexes_creates_expected_indexes():
     # bots: unique slug per tenant
     collections["bots"].create_index.assert_any_call(
         [("tenant_id", 1), ("slug", 1)], unique=True, background=True
+    )
+
+    # invitations: unique token hash
+    collections["invitations"].create_index.assert_any_call(
+        "token_hash", unique=True, background=True
+    )
+
+    # invitations: tenant-scoped listing
+    collections["invitations"].create_index.assert_any_call(
+        [("tenant_id", 1), ("created_at", -1)], background=True
     )

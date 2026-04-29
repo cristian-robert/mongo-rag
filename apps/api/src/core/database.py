@@ -139,4 +139,38 @@ async def ensure_indexes(db: AsyncDatabase, settings: Settings) -> None:
         background=True,
     )
 
+    # Users: tenant-scoped listing (team page)
+    await db[settings.mongodb_collection_users].create_index(
+        [("tenant_id", 1), ("created_at", 1)], background=True
+    )
+
+    # Invitations: unique by token_hash (single-use semantics)
+    await _create_index_safe(
+        db[settings.mongodb_collection_invitations],
+        "token_hash",
+        unique=True,
+        background=True,
+    )
+
+    # Invitations: only one PENDING invite per (tenant, email).
+    # Partial index allows revoked / accepted rows to coexist.
+    await _create_index_safe(
+        db[settings.mongodb_collection_invitations],
+        [("tenant_id", 1), ("email", 1)],
+        unique=True,
+        background=True,
+        partialFilterExpression={"accepted_at": None, "revoked_at": None},
+        name="invitation_pending_unique",
+    )
+
+    # Invitations: tenant-scoped listing
+    await db[settings.mongodb_collection_invitations].create_index(
+        [("tenant_id", 1), ("created_at", -1)], background=True
+    )
+
+    # Invitations: TTL cleanup 30 days after expiry (covers revoked + accepted)
+    await db[settings.mongodb_collection_invitations].create_index(
+        "expires_at", expireAfterSeconds=86400 * 30, background=True
+    )
+
     logger.info("database_indexes_ensured")
