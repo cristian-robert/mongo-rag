@@ -3,7 +3,18 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+class StrictRequest(BaseModel):
+    """Base for request bodies — rejects unknown fields and strips whitespace.
+
+    Forbidding extra fields prevents mass-assignment style bugs where a
+    client passes fields the model author did not intend to accept.
+    """
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
 
 # --- Ingestion ---
 
@@ -134,11 +145,13 @@ class ReingestResponse(BaseModel):
 # --- Chat ---
 
 
-class ChatRequest(BaseModel):
+class ChatRequest(StrictRequest):
     """Request body for chat endpoint."""
 
     message: str = Field(..., min_length=1, max_length=10000, description="User message")
-    conversation_id: Optional[str] = Field(default=None, description="Existing conversation ID")
+    conversation_id: Optional[str] = Field(
+        default=None, max_length=128, description="Existing conversation ID"
+    )
     search_type: Literal["semantic", "text", "hybrid"] = Field(
         default="hybrid", description="Search type: semantic, text, hybrid"
     )
@@ -163,21 +176,23 @@ class ChatResponse(BaseModel):
 # --- WebSocket ---
 
 
-class WSMessage(BaseModel):
+class WSMessage(StrictRequest):
     """Incoming WebSocket message from client."""
 
-    type: str = Field(..., description="Message type: message, cancel")
-    content: Optional[str] = Field(default=None, description="Message content")
-    conversation_id: Optional[str] = Field(default=None, description="Conversation ID")
+    type: Literal["message", "cancel"] = Field(..., description="Message type: message or cancel")
+    content: Optional[str] = Field(default=None, max_length=10000, description="Message content")
+    conversation_id: Optional[str] = Field(
+        default=None, max_length=128, description="Conversation ID"
+    )
 
 
 # --- Auth ---
 
 
-class SignupRequest(BaseModel):
+class SignupRequest(StrictRequest):
     """Request body for user signup."""
 
-    email: EmailStr = Field(..., description="User email address")
+    email: EmailStr = Field(..., max_length=320, description="User email address")
     password: str = Field(..., min_length=8, max_length=128, description="Password")
     organization_name: str = Field(
         ..., min_length=2, max_length=100, description="Organization name"
@@ -192,11 +207,11 @@ class SignupResponse(BaseModel):
     email: str
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(StrictRequest):
     """Request body for user login."""
 
-    email: EmailStr = Field(..., description="User email address")
-    password: str = Field(..., min_length=1, description="Password")
+    email: EmailStr = Field(..., max_length=320, description="User email address")
+    password: str = Field(..., min_length=1, max_length=128, description="Password")
 
 
 class LoginResponse(BaseModel):
@@ -209,16 +224,16 @@ class LoginResponse(BaseModel):
     role: str
 
 
-class ForgotPasswordRequest(BaseModel):
+class ForgotPasswordRequest(StrictRequest):
     """Request body for forgot password."""
 
-    email: EmailStr = Field(..., description="User email address")
+    email: EmailStr = Field(..., max_length=320, description="User email address")
 
 
-class ResetPasswordRequest(BaseModel):
+class ResetPasswordRequest(StrictRequest):
     """Request body for password reset."""
 
-    token: str = Field(..., min_length=1, description="Reset token from email")
+    token: str = Field(..., min_length=1, max_length=512, description="Reset token from email")
     new_password: str = Field(..., min_length=8, max_length=128, description="New password")
 
 
@@ -240,12 +255,13 @@ class WSTicketResponse(BaseModel):
 VALID_PERMISSIONS = {"chat", "search"}
 
 
-class CreateKeyRequest(BaseModel):
+class CreateKeyRequest(StrictRequest):
     """Request body for creating an API key."""
 
     name: str = Field(..., min_length=2, max_length=100, description="Human-readable key name")
     permissions: list[str] = Field(
         default_factory=lambda: ["chat", "search"],
+        max_length=8,
         description="Allowed operations",
     )
 

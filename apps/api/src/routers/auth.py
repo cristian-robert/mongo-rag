@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
+from src.core.rate_limit_dep import enforce_auth_ip_rate_limit
 from src.core.settings import Settings
 from src.core.tenant import get_tenant_id
 from src.models.api import (
@@ -63,7 +64,12 @@ async def _send_reset_email(email: str, token: str, settings: Settings) -> None:
         logger.exception("Failed to send reset email to %s", email)
 
 
-@router.post("/signup", response_model=SignupResponse, status_code=201)
+@router.post(
+    "/signup",
+    response_model=SignupResponse,
+    status_code=201,
+    dependencies=[Depends(enforce_auth_ip_rate_limit)],
+)
 async def signup(
     body: SignupRequest,
     service: AuthService = Depends(_get_auth_service),
@@ -81,7 +87,11 @@ async def signup(
     return SignupResponse(**result)
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    dependencies=[Depends(enforce_auth_ip_rate_limit)],
+)
 async def login(
     body: LoginRequest,
     service: AuthService = Depends(_get_auth_service),
@@ -95,7 +105,11 @@ async def login(
     return LoginResponse(**result)
 
 
-@router.post("/forgot-password", response_model=MessageResponse)
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    dependencies=[Depends(enforce_auth_ip_rate_limit)],
+)
 async def forgot_password(
     body: ForgotPasswordRequest,
     service: AuthService = Depends(_get_auth_service),
@@ -117,7 +131,11 @@ async def forgot_password(
     )
 
 
-@router.post("/reset-password", response_model=MessageResponse)
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    dependencies=[Depends(enforce_auth_ip_rate_limit)],
+)
 async def reset_password(
     body: ResetPasswordRequest,
     service: AuthService = Depends(_get_auth_service),
