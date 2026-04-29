@@ -13,6 +13,7 @@ from src.routers.auth import router as auth_router
 from src.routers.billing import router as billing_router
 from src.routers.bots import router as bots_router
 from src.routers.chat import router as chat_router
+from src.routers.documents import router as documents_router
 from src.routers.health import router as health_router
 from src.routers.ingest import router as ingest_router
 from src.routers.keys import router as keys_router
@@ -73,6 +74,10 @@ app.add_middleware(TenantGuardMiddleware)
 # Include routers
 app.include_router(health_router)
 app.include_router(ingest_router)
+# documents_router shares the /api/v1/documents prefix with ingest_router but
+# owns the CRUD verbs; registered after so its dynamic /{id} routes don't
+# shadow the literal /ingest path on the ingest router.
+app.include_router(documents_router)
 app.include_router(chat_router)
 app.include_router(auth_router)
 app.include_router(keys_router)

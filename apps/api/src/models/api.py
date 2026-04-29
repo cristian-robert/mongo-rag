@@ -59,6 +59,78 @@ class DocumentStatusResponse(BaseModel):
     error_message: Optional[str] = None
 
 
+# --- Document CRUD ---
+
+
+class DocumentRecord(BaseModel):
+    """A single document as returned by CRUD endpoints (no content/embeddings)."""
+
+    document_id: str
+    title: str
+    source: str
+    status: str
+    chunk_count: int = 0
+    format: str = ""
+    size_bytes: Optional[int] = None
+    metadata: dict = Field(default_factory=dict)
+    version: int = 1
+    error_message: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentListResponse(BaseModel):
+    """Paginated document listing."""
+
+    items: list[DocumentRecord]
+    total: int
+    page: int
+    page_size: int
+
+
+class DocumentUpdateRequest(BaseModel):
+    """PATCH body for updating user-editable document metadata."""
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=500)
+    metadata: Optional[dict] = Field(default=None, description="Replace metadata dict wholesale")
+
+    @field_validator("metadata")
+    @classmethod
+    def metadata_must_be_dict(cls, v: Optional[dict]) -> Optional[dict]:
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            raise ValueError("metadata must be a JSON object")
+        return v
+
+
+class BulkDeleteRequest(BaseModel):
+    """Body for bulk delete: {ids: [...]}."""
+
+    ids: list[str] = Field(..., min_length=1, max_length=100)
+
+    @field_validator("ids")
+    @classmethod
+    def ids_must_be_unique_nonempty(cls, v: list[str]) -> list[str]:
+        if any(not isinstance(i, str) or not i.strip() for i in v):
+            raise ValueError("ids must be non-empty strings")
+        return list({i for i in v})  # de-dupe
+
+
+class BulkDeleteResponse(BaseModel):
+    """Result of a bulk delete operation."""
+
+    requested: int
+    deleted: int
+
+
+class ReingestResponse(BaseModel):
+    """Response from re-ingestion trigger."""
+
+    document_id: str
+    status: str
+
+
 # --- Chat ---
 
 
