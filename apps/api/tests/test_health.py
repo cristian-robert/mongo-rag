@@ -50,3 +50,42 @@ def test_health_returns_503_on_mongo_failure(client):
         assert response.status_code == 503
         data = response.json()
         assert data["status"] == "error"
+
+
+@pytest.mark.unit
+def test_ready_returns_ok_when_all_components_healthy(client):
+    """Readiness endpoint returns 200 with all components ok."""
+    with patch("src.routers.health.AgentDependencies") as mock_deps_cls:
+        instance = mock_deps_cls.return_value
+        instance.initialize = AsyncMock()
+        instance.cleanup = AsyncMock()
+        instance.openai_client = MagicMock()
+        instance.settings = MagicMock()
+
+        response = client.get("/ready")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert data["components"]["mongodb"] == "ok"
+        assert data["components"]["embedding"] == "configured"
+
+
+@pytest.mark.unit
+def test_ready_returns_503_when_mongo_unreachable(client):
+    """Readiness endpoint returns 503 with breakdown when MongoDB is down."""
+    from pymongo.errors import ConnectionFailure
+
+    with patch("src.routers.health.AgentDependencies") as mock_deps_cls:
+        instance = mock_deps_cls.return_value
+        instance.initialize = AsyncMock(side_effect=ConnectionFailure("nope"))
+        instance.cleanup = AsyncMock()
+        instance.openai_client = None
+        instance.settings = None
+
+        response = client.get("/ready")
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["status"] == "not_ready"
+        assert data["components"]["mongodb"] == "unreachable"

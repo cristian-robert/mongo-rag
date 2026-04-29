@@ -203,6 +203,32 @@ class Settings(BaseSettings):
         description="Stripe webhook signing secret (whsec_...) — used by webhook handler in #43",
     )
 
+    # Observability Configuration
+    log_level: str = Field(
+        default="INFO",
+        description="Root log level (DEBUG, INFO, WARNING, ERROR)",
+    )
+
+    app_env: str = Field(
+        default="development",
+        description="Deployment environment tag attached to logs and Sentry events",
+    )
+
+    sentry_dsn: Optional[str] = Field(
+        default=None,
+        description="Sentry DSN — when unset, Sentry is a graceful no-op",
+    )
+
+    sentry_traces_sample_rate: float = Field(
+        default=0.0,
+        description="Sentry performance trace sample rate (0.0 = off)",
+    )
+
+    sentry_release: Optional[str] = Field(
+        default=None,
+        description="Release identifier surfaced in Sentry events",
+    )
+
     # Stripe Price IDs — one per (plan, model_tier) combination.
     stripe_price_pro_starter: Optional[str] = Field(default=None)
     stripe_price_pro_standard: Optional[str] = Field(default=None)
