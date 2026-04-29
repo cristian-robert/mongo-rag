@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 
-import { auth } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
 import { AcceptInviteClient } from "./accept-invite-client";
 
@@ -43,7 +43,7 @@ export default async function InvitePage({ params }: PageProps) {
   }
   const preview = (await res.json()) as InvitePreview;
 
-  const session = await auth();
+  const session = await getSession();
   const signedInEmail = session?.user?.email ?? null;
 
   return (

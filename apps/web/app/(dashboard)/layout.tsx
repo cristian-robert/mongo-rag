@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
-import { auth } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 
 import { Sidebar } from "./_components/sidebar";
 import { Topbar } from "./_components/topbar";
@@ -10,12 +11,20 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user) {
     redirect("/login");
   }
 
-  const tenantName = session.user.tenant_id;
+  // RLS scopes the query to the user's own tenant.
+  const supabase = await createClient();
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("name")
+    .eq("id", session.user.tenant_id)
+    .maybeSingle();
+
+  const tenantName = tenant?.name ?? session.user.tenant_id;
 
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground">

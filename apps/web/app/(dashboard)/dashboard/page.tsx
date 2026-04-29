@@ -1,6 +1,6 @@
 import { Bot, FileText, KeyRound, MessageSquareText, Upload, Zap } from "lucide-react";
 
-import { auth } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
 import { QuickAction } from "../_components/quick-action";
 import { StatCard } from "../_components/stat-card";
@@ -39,7 +39,7 @@ function formatNumber(n: number): string {
 }
 
 export default async function DashboardOverviewPage() {
-  const session = await auth();
+  const session = await getSession();
   const email = session?.user?.email ?? "there";
   const tenantId = session?.user?.tenant_id ?? "";
 

@@ -2,8 +2,8 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -18,17 +18,24 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { createClient } from "@/lib/supabase/client";
 import {
   resetPasswordSchema,
   type ResetPasswordFormData,
 } from "@/lib/validations/auth";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8100";
-
-function ResetPasswordForm() {
+/**
+ * Reset-password page.
+ *
+ * Reached via Supabase recovery flow: the user clicks the email link,
+ * hits `/auth/callback?next=/reset-password`, the callback exchanges
+ * the code for a session, then lands here. At that point the user is
+ * signed in with a recovery session and `updateUser({ password })`
+ * rotates the password. We do NOT expose a `token` URL param — the
+ * recovery code is single-use and consumed by the callback route.
+ */
+export default function ResetPasswordPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const token = searchParams.get("token");
   const [isLoading, setIsLoading] = useState(false);
 
   const {
@@ -39,51 +46,25 @@ function ResetPasswordForm() {
     resolver: zodResolver(resetPasswordSchema),
   });
 
-  if (!token) {
-    return (
-      <Card className="border-border/50">
-        <CardHeader className="text-center pb-2">
-          <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase mb-2">
-            MongoRAG
-          </p>
-          <CardTitle className="text-3xl font-extralight tracking-tight">
-            Invalid reset link
-          </CardTitle>
-          <CardDescription className="mt-2">
-            This password reset link is invalid or has expired.
-          </CardDescription>
-        </CardHeader>
-        <CardFooter className="justify-center pt-2">
-          <Link
-            href="/forgot-password"
-            className="text-sm text-primary hover:underline transition-colors"
-          >
-            Request a new reset link
-          </Link>
-        </CardFooter>
-      </Card>
-    );
-  }
-
   async function onSubmit(data: ResetPasswordFormData) {
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/v1/auth/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token,
-          new_password: data.password,
-        }),
+      const supabase = createClient();
+      const { error } = await supabase.auth.updateUser({
+        password: data.password,
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        toast.error(error.detail || "Reset failed. The link may have expired.");
+      if (error) {
+        toast.error(
+          error.message ||
+            "Reset failed. Please request a new link from the forgot-password page.",
+        );
         return;
       }
 
       toast.success("Password reset successfully!");
+      // Sign the user out so they re-authenticate with the new password.
+      await supabase.auth.signOut();
       router.push("/login");
     } catch {
       toast.error("Something went wrong. Please try again.");
@@ -150,13 +131,5 @@ function ResetPasswordForm() {
         </CardFooter>
       </form>
     </Card>
-  );
-}
-
-export default function ResetPasswordPage() {
-  return (
-    <Suspense>
-      <ResetPasswordForm />
-    </Suspense>
   );
 }

@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { LogOut } from "lucide-react";
-import { signOut } from "next-auth/react";
 
 import { cn } from "@/lib/utils";
 
@@ -76,22 +75,25 @@ export function UserMenu({
             </p>
           </div>
           <div className="my-1 h-px bg-border" />
-          <button
-            role="menuitem"
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              void signOut({ callbackUrl: "/login" });
-            }}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground",
-              "transition-colors hover:bg-muted",
-              "focus-visible:outline-none focus-visible:bg-muted",
-            )}
-          >
-            <LogOut className="size-4" aria-hidden="true" />
-            Sign out
-          </button>
+          {/*
+            Sign-out is a POST form (CSRF surface). The route handler clears
+            Supabase cookies and redirects to /login.
+          */}
+          <form method="POST" action="/auth/signout">
+            <button
+              role="menuitem"
+              type="submit"
+              onClick={() => setOpen(false)}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground",
+                "transition-colors hover:bg-muted",
+                "focus-visible:outline-none focus-visible:bg-muted",
+              )}
+            >
+              <LogOut className="size-4" aria-hidden="true" />
+              Sign out
+            </button>
+          </form>
         </div>
       ) : null}
     </div>

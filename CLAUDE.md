@@ -19,7 +19,7 @@ This repo also runs the **AIDevelopmentFramework** (PIV+E loop) for development 
 | Embeddings | OpenAI text-embedding-3-small (1536 dims) |
 | LLM | Pluggable — OpenAI, OpenRouter, Ollama, Gemini |
 | Ingestion | Docling HybridChunker + batch embedder |
-| Auth | NextAuth.js (dashboard), API keys (widget/programmatic) |
+| Auth | Supabase Auth (email/password via @supabase/ssr) for dashboard; API keys (widget/programmatic) |
 | Billing | Stripe |
 | Package manager | uv (Python), pnpm (Node) |
 
@@ -166,7 +166,7 @@ pnpm test                        # Tests
 ## Environment Variables
 
 - **Backend** (`apps/api/.env`): `MONGODB_URI`, `LLM_API_KEY`, `EMBEDDING_API_KEY`, `LLM_MODEL`, `EMBEDDING_MODEL`, `STRIPE_SECRET_KEY`
-- **Frontend** (`apps/web/.env.local`): `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`
+- **Frontend** (`apps/web/.env.local`): `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`
 
 ## Code Patterns & Conventions
 

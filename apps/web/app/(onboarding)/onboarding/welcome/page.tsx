@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { auth } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Welcome — MongoRAG onboarding",
@@ -36,7 +36,7 @@ const STEPS = [
 ];
 
 export default async function WelcomePage() {
-  const session = await auth();
+  const session = await getSession();
   const name = session?.user?.name?.trim() || session?.user?.email || "there";
 
   return (

@@ -2,8 +2,6 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -19,13 +17,12 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { createClient } from "@/lib/supabase/client";
 import { signupSchema, type SignupFormData } from "@/lib/validations/auth";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8100";
-
 export default function SignupPage() {
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const {
     register,
@@ -38,43 +35,63 @@ export default function SignupPage() {
   async function onSubmit(data: SignupFormData) {
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/v1/auth/signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
-          organization_name: data.organizationName,
-        }),
-      });
+      const supabase = createClient();
+      const origin = window.location.origin;
 
-      if (!response.ok) {
-        const error = await response.json();
-        toast.error(error.detail || "Signup failed");
-        return;
-      }
-
-      const result = await signIn("credentials", {
+      const { error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
-        redirect: false,
+        options: {
+          // Persist the org name in user_metadata; the `handle_new_user`
+          // Postgres trigger reads `raw_user_meta_data->>'name'` to seed
+          // the tenants row.
+          data: { name: data.organizationName },
+          emailRedirectTo: `${origin}/auth/callback?next=/onboarding/welcome`,
+        },
       });
 
-      if (result?.error) {
-        toast.error(
-          "Account created but login failed. Please sign in manually."
-        );
-        router.push("/login");
+      if (error) {
+        if (error.message.toLowerCase().includes("already")) {
+          toast.error("An account with that email already exists.");
+        } else {
+          toast.error(error.message || "Signup failed");
+        }
         return;
       }
 
-      router.push("/onboarding/welcome");
-      router.refresh();
+      setSubmitted(true);
     } catch {
       toast.error("Something went wrong. Please try again.");
     } finally {
       setIsLoading(false);
     }
+  }
+
+  if (submitted) {
+    return (
+      <Card className="border-border/50">
+        <CardHeader className="text-center pb-2">
+          <p className="text-sm font-medium tracking-widest text-muted-foreground uppercase mb-2">
+            MongoRAG
+          </p>
+          <CardTitle className="text-3xl font-extralight tracking-tight">
+            Check your email
+          </CardTitle>
+          <CardDescription className="mt-2">
+            We&apos;ve sent you a confirmation link. Click it to verify your
+            address and finish creating your account.
+          </CardDescription>
+        </CardHeader>
+        <CardFooter className="justify-center pt-2">
+          <Link
+            href="/login"
+            className="text-sm text-muted-foreground hover:text-primary transition-colors"
+          >
+            Back to sign in
+          </Link>
+        </CardFooter>
+      </Card>
+    );
   }
 
   return (
