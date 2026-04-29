@@ -125,6 +125,10 @@ class AgentDependencies:
     def ws_tickets_collection(self) -> AsyncCollection:
         return self._get_collection(self.settings.mongodb_collection_ws_tickets)
 
+    @property
+    def usage_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_usage)
+
     # -- Core methods --
 
     async def cleanup(self) -> None:

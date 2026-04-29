@@ -21,6 +21,23 @@ def app_client():
     mock_deps.conversations_collection = MagicMock()
     mock_deps.documents_collection = MagicMock()
     mock_deps.chunks_collection = MagicMock()
+    # Quota / rate-limit dependencies
+    mock_deps.subscriptions_collection = MagicMock()
+    mock_deps.subscriptions_collection.find_one = AsyncMock(
+        return_value={"plan": "free", "status": "active"}
+    )
+    mock_deps.usage_collection = MagicMock()
+    mock_deps.usage_collection.find_one_and_update = AsyncMock(
+        return_value={
+            "tenant_id": "test-tenant-001",
+            "period_key": "2026-04",
+            "queries_count": 1,
+        }
+    )
+    mock_deps.usage_collection.update_one = AsyncMock()
+    from src.services.rate_limit import reset_default_limiter
+
+    reset_default_limiter()
 
     with TestClient(app) as c:
         app.state.deps = mock_deps  # Override after lifespan runs
