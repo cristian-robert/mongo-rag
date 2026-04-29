@@ -69,6 +69,8 @@ def mock_deps():
     )
     deps.usage_collection.update_one = AsyncMock()
     deps.bots_collection = MagicMock()
+    deps.webhooks_collection = MagicMock()
+    deps.webhook_deliveries_collection = MagicMock()
     return deps
 
 

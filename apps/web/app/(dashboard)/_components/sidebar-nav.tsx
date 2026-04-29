@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Settings,
   Users,
+  Webhook,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: "/dashboard/bots", label: "Bots", icon: Bot },
   { href: "/dashboard/documents", label: "Documents", icon: FileText },
   { href: "/dashboard/api-keys", label: "API Keys", icon: KeyRound },
+  { href: "/dashboard/webhooks", label: "Webhooks", icon: Webhook },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/team", label: "Team", icon: Users },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },

@@ -91,6 +91,16 @@ class Settings(BaseSettings):
         description="How long an invitation remains valid",
     )
 
+    mongodb_collection_webhooks: str = Field(
+        default="webhooks",
+        description="Collection for tenant-scoped webhook subscriptions",
+    )
+
+    mongodb_collection_webhook_deliveries: str = Field(
+        default="webhook_deliveries",
+        description="Audit log of outbound webhook delivery attempts",
+    )
+
     # LLM Configuration (OpenAI-compatible)
     llm_provider: str = Field(
         default="openrouter",
