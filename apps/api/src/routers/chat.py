@@ -43,6 +43,7 @@ async def chat_endpoint(
                 tenant_id=tenant_id,
                 conversation_id=body.conversation_id,
                 search_type=body.search_type,
+                retrieval=body.retrieval,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
 
@@ -63,6 +64,7 @@ async def chat_endpoint(
             tenant_id=tenant_id,
             conversation_id=body.conversation_id,
             search_type=body.search_type,
+            retrieval=body.retrieval,
         )
     except ConversationNotFoundError:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -70,7 +72,9 @@ async def chat_endpoint(
     return ChatResponse(
         answer=result["answer"],
         sources=result["sources"],
+        citations=result.get("citations", []),
         conversation_id=result["conversation_id"],
+        rewritten_queries=result.get("rewritten_queries", []),
     )
 
 

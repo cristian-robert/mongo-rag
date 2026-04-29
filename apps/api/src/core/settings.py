@@ -128,6 +128,57 @@ class Settings(BaseSettings):
         default=0.3, description="Default text weight for hybrid search (0-1)"
     )
 
+    rrf_k: int = Field(
+        default=60, ge=1, le=200, description="RRF fusion constant (default 60, standard)."
+    )
+
+    # Reranking (off by default; enable per-tenant/per-bot or globally via env)
+    rerank_provider: str = Field(
+        default="off",
+        description="Reranker backend: 'off', 'cohere', or 'local' (cross-encoder).",
+    )
+
+    rerank_api_key: Optional[str] = Field(
+        default=None,
+        description="API key for hosted reranker (e.g. Cohere). Required when provider=cohere.",
+    )
+
+    rerank_model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Reranker model name. Defaults: cohere=rerank-3.5, local=ms-marco-MiniLM-L-6-v2."
+        ),
+    )
+
+    rerank_top_n: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Number of post-RRF candidates fed to the reranker.",
+    )
+
+    rerank_timeout_seconds: float = Field(
+        default=1.5,
+        ge=0.1,
+        le=10.0,
+        description="Hard timeout for a single rerank call (graceful fallback to RRF).",
+    )
+
+    # Query rewriting (off by default)
+    query_rewrite_enabled: bool = Field(
+        default=False,
+        description="Enable lightweight query expansion / rewriting for vague queries.",
+    )
+
+    query_rewrite_use_llm: bool = Field(
+        default=False,
+        description="Use LLM-based rewriter (otherwise heuristic-only).",
+    )
+
+    query_rewrite_max_expansions: int = Field(
+        default=2, ge=0, le=5, description="Maximum number of additional retrieval queries."
+    )
+
     # Redis / Celery Configuration
     redis_url: str = Field(
         default="redis://localhost:6379/0",
