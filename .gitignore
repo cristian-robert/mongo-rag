@@ -3,6 +3,9 @@
 .env.local
 .env.*.local
 
+# Local-only Claude knowledge (credentials, secrets, scratchpads)
+.claude/secrets/
+
 # Python
 __pycache__/
 *.py[cod]

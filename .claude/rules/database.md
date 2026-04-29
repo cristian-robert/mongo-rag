@@ -33,9 +33,16 @@ After any schema change:
 - [ ] KB wiki articles updated for schema changes (if KB configured)
 - [ ] Backup + restore procedure still valid for new schema
 
+## Supabase Project (this repo)
+
+- Supabase work runs against org `kdvcxztadqnitzzznqzg`, project `vmuybfmxermgwhmhevou`.
+- Prefer the Supabase CLI (`supabase`) over ad-hoc SQL whenever it is available on PATH.
+- Credentials (publishable key, secret key, DB password, env values) live in `.claude/secrets/supabase.md` — gitignored, local-only. Read that file before any Supabase task; never paste its contents into tracked files.
+
 ## References
 
 Load only when the rule triggers:
 
+- `.claude/secrets/supabase.md` — load for Supabase credentials, project refs, and CLI invocation patterns (gitignored, local-only)
 - `.claude/references/security-checklist.md` — load for DB infrastructure/security checks (encryption at rest, network isolation, backups)
 - `<kb-path>/wiki/_index.md` — search for existing schema/domain articles before DDL changes
