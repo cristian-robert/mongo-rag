@@ -165,9 +165,7 @@ async def get_me(
     except (InvalidId, TypeError):
         raise HTTPException(status_code=401, detail="Unknown user")
 
-    user = await deps.users_collection.find_one(
-        {"_id": oid, "tenant_id": principal.tenant_id}
-    )
+    user = await deps.users_collection.find_one({"_id": oid, "tenant_id": principal.tenant_id})
     if not user:
         raise HTTPException(status_code=401, detail="Unknown user")
 

@@ -23,6 +23,8 @@ async def test_ensure_indexes_creates_expected_indexes():
         "usage",
         "bots",
         "invitations",
+        "webhooks",
+        "webhook_deliveries",
     ]:
         mock_col = MagicMock()
         mock_col.create_index = AsyncMock()
@@ -43,6 +45,8 @@ async def test_ensure_indexes_creates_expected_indexes():
     mock_settings.mongodb_collection_usage = "usage"
     mock_settings.mongodb_collection_bots = "bots"
     mock_settings.mongodb_collection_invitations = "invitations"
+    mock_settings.mongodb_collection_webhooks = "webhooks"
+    mock_settings.mongodb_collection_webhook_deliveries = "webhook_deliveries"
 
     await ensure_indexes(mock_db, mock_settings)
 
@@ -110,4 +114,29 @@ async def test_ensure_indexes_creates_expected_indexes():
     # invitations: tenant-scoped listing
     collections["invitations"].create_index.assert_any_call(
         [("tenant_id", 1), ("created_at", -1)], background=True
+    )
+
+    # webhooks: tenant-scoped listing
+    collections["webhooks"].create_index.assert_any_call(
+        [("tenant_id", 1), ("created_at", -1)], background=True
+    )
+
+    # webhooks: active subscribers per event
+    collections["webhooks"].create_index.assert_any_call(
+        [("tenant_id", 1), ("active", 1), ("events", 1)], background=True
+    )
+
+    # webhook_deliveries: tenant-scoped recent listing
+    collections["webhook_deliveries"].create_index.assert_any_call(
+        [("tenant_id", 1), ("created_at", -1)], background=True
+    )
+
+    # webhook_deliveries: per-webhook listing
+    collections["webhook_deliveries"].create_index.assert_any_call(
+        [("webhook_id", 1), ("created_at", -1)], background=True
+    )
+
+    # webhook_deliveries: TTL prune after 30 days
+    collections["webhook_deliveries"].create_index.assert_any_call(
+        "created_at", expireAfterSeconds=60 * 60 * 24 * 30, background=True
     )

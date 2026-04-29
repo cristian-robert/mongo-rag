@@ -204,10 +204,7 @@ class TeamService:
             raise TeamError("Only owners can remove an owner", status_code=403)
 
         # Last-owner-protection.
-        if (
-            target_role == UserRole.OWNER.value
-            and await self._count_owners(tenant_id) <= 1
-        ):
+        if target_role == UserRole.OWNER.value and await self._count_owners(tenant_id) <= 1:
             raise TeamError(
                 "Cannot remove the last owner — promote another member first",
                 status_code=409,
@@ -269,9 +266,7 @@ class TeamService:
 
         email = email.strip().lower()
 
-        existing = await self._users.find_one(
-            {"tenant_id": tenant_id, "email": email}
-        )
+        existing = await self._users.find_one({"tenant_id": tenant_id, "email": email})
         if existing:
             raise TeamError("That email is already a member of this tenant", 409)
 
@@ -293,9 +288,7 @@ class TeamService:
         try:
             result = await self._invitations.insert_one(doc)
         except DuplicateKeyError:
-            raise TeamError(
-                "An invitation for that email is already pending", 409
-            )
+            raise TeamError("An invitation for that email is already pending", 409)
 
         doc["_id"] = result.inserted_id
         logger.info(
