@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 function getBase(): string {
   return (
     process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXTAUTH_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
     "http://localhost:3100"
   ).replace(/\/+$/, "");
 }

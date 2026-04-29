@@ -1,42 +1,27 @@
-import { SignJWT } from "jose";
+import "server-only";
 
-import { auth } from "@/lib/auth";
-
-const ALG = "HS256";
-const TTL_SECONDS = 5 * 60;
+import { getAccessToken, getSession } from "@/lib/auth";
 
 /**
- * Mint a short-lived HS256 JWT for the FastAPI backend, signed with NEXTAUTH_SECRET.
+ * Resolve a backend-bound bearer token from the current request's Supabase
+ * session.
  *
- * The backend `_resolve_jwt` only requires a `tenant_id` claim and will reject
- * tokens without it. Tenant identity is taken from the NextAuth session — never
- * from client-supplied data — preserving tenant isolation.
+ * The FastAPI backend (issue #40) verifies Supabase RS256 access tokens via
+ * the project's JWKS and joins the matching `profiles` row to derive
+ * `tenant_id`. Tenant identity is therefore never client-supplied.
+ *
+ * Returns null when the user is unauthenticated; callers should treat that
+ * as a 401.
  */
 export async function mintBackendToken(): Promise<{
   token: string;
   tenantId: string;
 } | null> {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.tenant_id) return null;
 
-  const secret = process.env.NEXTAUTH_SECRET;
-  if (!secret) {
-    throw new Error(
-      "NEXTAUTH_SECRET is not configured — cannot mint backend token",
-    );
-  }
-
-  const now = Math.floor(Date.now() / 1000);
-  const token = await new SignJWT({
-    tenant_id: session.user.tenant_id,
-    sub: session.user.id,
-    role: session.user.role,
-    email: session.user.email,
-  })
-    .setProtectedHeader({ alg: ALG })
-    .setIssuedAt(now)
-    .setExpirationTime(now + TTL_SECONDS)
-    .sign(new TextEncoder().encode(secret));
+  const token = await getAccessToken();
+  if (!token) return null;
 
   return { token, tenantId: session.user.tenant_id };
 }

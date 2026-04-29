@@ -17,12 +17,11 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { createClient } from "@/lib/supabase/client";
 import {
   forgotPasswordSchema,
   type ForgotPasswordFormData,
 } from "@/lib/validations/auth";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8100";
 
 export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -39,10 +38,13 @@ export default function ForgotPasswordPage() {
   async function onSubmit(data: ForgotPasswordFormData) {
     setIsLoading(true);
     try {
-      await fetch(`${API_URL}/api/v1/auth/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: data.email }),
+      const supabase = createClient();
+      const origin = window.location.origin;
+
+      // Always show the same success state regardless of whether the
+      // email exists — prevents account enumeration.
+      await supabase.auth.resetPasswordForEmail(data.email, {
+        redirectTo: `${origin}/auth/callback?next=/reset-password`,
       });
 
       setSubmitted(true);

@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const isProd = process.env.NODE_ENV === "production";
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8100";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
 /**
  * Build a Content-Security-Policy header.
@@ -11,8 +12,10 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8100";
  *   first-party + Stripe.
  * - In dev we allow `'unsafe-eval'` and `'unsafe-inline'` so React Refresh
  *   and Next.js HMR work; production scripts are tightly constrained.
- * - Inline styles are required by the Geist fonts loader and Tailwind
- *   in some cases — kept until we move to a nonce-based pipeline.
+ * - Inline styles are required by the Geist fonts loader and Tailwind in
+ *   some cases — kept until we move to a nonce-based pipeline.
+ * - Supabase Auth uses HTTPS REST + WSS Realtime; both origins are added
+ *   to `connect-src` whenever NEXT_PUBLIC_SUPABASE_URL is configured.
  */
 function buildCsp(): string {
   const apiOrigin = (() => {
@@ -22,6 +25,19 @@ function buildCsp(): string {
       return "http://localhost:8100";
     }
   })();
+
+  const supabaseOrigin = (() => {
+    if (!supabaseUrl) return null;
+    try {
+      return new URL(supabaseUrl).origin;
+    } catch {
+      return null;
+    }
+  })();
+
+  const supabaseConnectSrc = supabaseOrigin
+    ? [supabaseOrigin, supabaseOrigin.replace(/^https/, "wss")]
+    : [];
 
   const scriptSrc = isProd
     ? ["'self'", "https://js.stripe.com", "https://checkout.stripe.com"]
@@ -52,6 +68,7 @@ function buildCsp(): string {
       apiOrigin,
       "https://api.stripe.com",
       "https://checkout.stripe.com",
+      ...supabaseConnectSrc,
       ...(isProd ? [] : ["ws:", "wss:"]),
     ],
     "frame-src": [

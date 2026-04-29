@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -93,12 +93,12 @@ export function AcceptInviteClient({ token, preview, signedInEmail }: Props) {
         toast.error(data.detail ?? "Could not accept invitation");
         return;
       }
-      const signin = await signIn("credentials", {
+      const supabase = createClient();
+      const { error: signinError } = await supabase.auth.signInWithPassword({
         email: preview.email,
         password,
-        redirect: false,
       });
-      if (signin?.error) {
+      if (signinError) {
         toast.error("Account created but sign-in failed; please log in");
         router.push("/login");
         return;

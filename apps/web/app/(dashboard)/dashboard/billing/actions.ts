@@ -9,13 +9,13 @@ export type StartCheckoutResult =
   | { ok: false; error: string };
 
 /**
- * Build redirect URLs from the server-controlled NEXTAUTH_URL so a malicious
+ * Build redirect URLs from the server-controlled NEXT_PUBLIC_APP_URL so a malicious
  * client cannot make Stripe redirect to an attacker-controlled domain.
  */
 function buildRedirectUrls(): { success_url: string; cancel_url: string } {
-  const origin = process.env.NEXTAUTH_URL;
+  const origin = process.env.NEXT_PUBLIC_APP_URL;
   if (!origin) {
-    throw new Error("NEXTAUTH_URL is not configured");
+    throw new Error("NEXT_PUBLIC_APP_URL is not configured");
   }
   // Trim trailing slashes for predictable concatenation.
   const base = origin.replace(/\/+$/, "");
