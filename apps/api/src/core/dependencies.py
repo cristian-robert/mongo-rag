@@ -137,6 +137,14 @@ class AgentDependencies:
     def invitations_collection(self) -> AsyncCollection:
         return self._get_collection(self.settings.mongodb_collection_invitations)
 
+    @property
+    def webhooks_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_webhooks)
+
+    @property
+    def webhook_deliveries_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_webhook_deliveries)
+
     # -- Core methods --
 
     async def cleanup(self) -> None:

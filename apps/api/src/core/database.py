@@ -173,4 +173,24 @@ async def ensure_indexes(db: AsyncDatabase, settings: Settings) -> None:
         "expires_at", expireAfterSeconds=86400 * 30, background=True
     )
 
+    # Webhooks: tenant-scoped lookups + active subscribers per event
+    await db[settings.mongodb_collection_webhooks].create_index(
+        [("tenant_id", 1), ("created_at", -1)], background=True
+    )
+    await db[settings.mongodb_collection_webhooks].create_index(
+        [("tenant_id", 1), ("active", 1), ("events", 1)], background=True
+    )
+
+    # Webhook deliveries: tenant-scoped recent listing + per-webhook listing
+    await db[settings.mongodb_collection_webhook_deliveries].create_index(
+        [("tenant_id", 1), ("created_at", -1)], background=True
+    )
+    await db[settings.mongodb_collection_webhook_deliveries].create_index(
+        [("webhook_id", 1), ("created_at", -1)], background=True
+    )
+    # Auto-prune delivery audit rows after 30 days to bound the collection.
+    await db[settings.mongodb_collection_webhook_deliveries].create_index(
+        "created_at", expireAfterSeconds=60 * 60 * 24 * 30, background=True
+    )
+
     logger.info("database_indexes_ensured")

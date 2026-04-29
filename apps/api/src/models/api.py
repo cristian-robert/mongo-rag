@@ -425,9 +425,7 @@ class InvitationPreviewResponse(BaseModel):
     role: TeamRole
     organization_name: str
     expires_at: datetime
-    requires_signup: bool = Field(
-        ..., description="True if no account exists for this email yet"
-    )
+    requires_signup: bool = Field(..., description="True if no account exists for this email yet")
 
 
 class MeResponse(BaseModel):

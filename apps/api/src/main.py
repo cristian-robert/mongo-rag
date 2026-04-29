@@ -28,6 +28,7 @@ from src.routers.ingest import router as ingest_router
 from src.routers.keys import router as keys_router
 from src.routers.team import router as team_router
 from src.routers.usage import router as usage_router
+from src.routers.webhooks import router as webhooks_router
 
 # Install structured JSON logging before any module-level logger acquires
 # a handler from the default config.
@@ -159,3 +160,4 @@ app.include_router(billing_router)
 app.include_router(bots_router)
 app.include_router(analytics_router)
 app.include_router(team_router)
+app.include_router(webhooks_router)
