@@ -180,6 +180,38 @@ class Settings(BaseSettings):
         description="Frontend app URL (used in password reset email links)",
     )
 
+    # Application environment — gates dev-only relaxations
+    app_env: str = Field(
+        default="development",
+        description="Environment label: development, staging, production",
+    )
+
+    # CORS configuration — explicit allow-list, no wildcards in production
+    cors_allowed_origins: str = Field(
+        default="http://localhost:3100",
+        description=(
+            "Comma-separated list of allowed CORS origins for the dashboard. "
+            "Production must enumerate explicit origins — no wildcards."
+        ),
+    )
+
+    # Maximum allowed request body size (bytes) for non-multipart endpoints.
+    # File uploads use max_upload_size_mb separately.
+    max_request_body_bytes: int = Field(
+        default=1_048_576,  # 1 MiB
+        description="Maximum body size for JSON/form requests (bytes).",
+    )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Parse comma-separated origins into a clean list."""
+        return [o.strip() for o in (self.cors_allowed_origins or "").split(",") if o.strip()]
+
+    @property
+    def is_production(self) -> bool:
+        """Whether the app is running in production mode."""
+        return self.app_env.lower() == "production"
+
     reset_email_from: str = Field(
         default="noreply@mongorag.com",
         description="From address for password reset emails",

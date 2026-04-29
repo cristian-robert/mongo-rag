@@ -3,6 +3,7 @@
 Webhook handling is intentionally out of scope here — see issue #43.
 """
 
+import ipaddress
 import logging
 from urllib.parse import urlparse
 
@@ -49,6 +50,26 @@ def _get_billing_service(deps: AgentDependencies = Depends(get_deps)) -> Billing
         raise HTTPException(status_code=503, detail=str(exc))
 
 
+def _is_private_host(host: str) -> bool:
+    """Return True for hostnames that resolve to private/loopback ranges.
+
+    We block IP-literal hosts in private, loopback, link-local, and
+    multicast ranges to prevent SSRF-style abuse via the redirect URL.
+    """
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_multicast
+        or addr.is_reserved
+        or addr.is_unspecified
+    )
+
+
 def _validate_redirect_url(url: str, field: str) -> None:
     """Reject obviously dangerous URLs before forwarding to Stripe.
 
@@ -56,7 +77,10 @@ def _validate_redirect_url(url: str, field: str) -> None:
     and cannot be enumerated up-front). We do enforce:
       - scheme is http or https
       - a host is present
+      - no embedded credentials (user@host)
       - http is only allowed for localhost (dev)
+      - IP-literal hosts in private ranges are rejected to harden against
+        SSRF probes injected into the redirect chain
     """
     try:
         parsed = urlparse(url)
@@ -69,13 +93,23 @@ def _validate_redirect_url(url: str, field: str) -> None:
         )
     if not parsed.hostname:
         raise HTTPException(status_code=400, detail=f"{field} is missing a host")
+    if parsed.username or parsed.password:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field} must not include user credentials",
+        )
+    host = parsed.hostname.lower()
     if parsed.scheme == "http":
-        host = parsed.hostname.lower()
         if host != "localhost" and not host.startswith("127."):
             raise HTTPException(
                 status_code=400,
                 detail=f"{field} must use https outside of localhost",
             )
+    elif _is_private_host(host):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field} must not point to a private network address",
+        )
 
 
 @router.get("/plans", response_model=PlansResponse)

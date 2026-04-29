@@ -31,6 +31,55 @@ def _principal_key(authorization: Optional[str], tenant_id: str) -> str:
     return "tenant:" + tenant_id
 
 
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP for unauthenticated rate limiting.
+
+    Honours X-Forwarded-For only when the deployment terminates TLS at a
+    trusted proxy (the proxy must strip client-set XFF). We take the
+    left-most token because most proxies append.
+    """
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip() or "unknown"
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+# Per-IP limit for unauthenticated endpoints (login/signup/forgot/reset).
+# Tighter than per-tenant limits to slow brute-force credential attacks.
+_AUTH_IP_LIMIT_PER_MINUTE = 20
+
+
+async def enforce_auth_ip_rate_limit(request: Request) -> None:
+    """Apply a per-IP rate limit to unauthenticated auth endpoints.
+
+    Returns 429 with ``Retry-After`` when exceeded. Used on login,
+    signup, forgot-password, reset-password — endpoints that do not yet
+    have a tenant_id we could rate-limit by.
+    """
+    ip = _client_ip(request)
+    limiter = get_default_limiter()
+    key = "ip:" + ip
+    result = await limiter.check(key, _AUTH_IP_LIMIT_PER_MINUTE, window_seconds=60)
+
+    if not result.allowed:
+        logger.warning(
+            "auth_ip_rate_limited",
+            extra={"ip_prefix": ip.rsplit(".", 1)[0] if "." in ip else ip[:6]},
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="Too many requests — please retry shortly",
+            headers={
+                "Retry-After": str(result.reset_in),
+                "X-RateLimit-Limit": str(result.limit),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(result.reset_in),
+            },
+        )
+
+
 async def enforce_rate_limit(
     request: Request,
     authorization: Optional[str] = Header(default=None),

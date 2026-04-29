@@ -12,7 +12,7 @@ Aligned with `docs/superpowers/specs/2026-04-04-stripe-billing-design.md`.
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.models.tenant import PlanTier
 
@@ -84,6 +84,8 @@ FREE_TIER_MODEL = "openai/gpt-5.4-nano"
 
 class CheckoutRequest(BaseModel):
     """Request body for POST /api/v1/billing/checkout."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     plan: PlanTier = Field(..., description="Target plan: pro or enterprise")
     model_tier: ModelTier = Field(..., description="Model tier inside the plan")
