@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BarChart3,
   Bot,
   CreditCard,
   FileText,
@@ -24,6 +25,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: "/dashboard/bots", label: "Bots", icon: Bot },
   { href: "/dashboard/documents", label: "Documents", icon: FileText },
   { href: "/dashboard/api-keys", label: "API Keys", icon: KeyRound },
+  { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ] as const;

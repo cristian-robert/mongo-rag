@@ -17,6 +17,7 @@ from src.core.middleware import (
 from src.core.observability import configure_logging, init_sentry
 from src.core.request_logging import RequestLoggingMiddleware, install_exception_handlers
 from src.core.settings import load_settings
+from src.routers.analytics import router as analytics_router
 from src.routers.auth import router as auth_router
 from src.routers.billing import router as billing_router
 from src.routers.bots import router as bots_router
@@ -155,3 +156,4 @@ app.include_router(keys_router)
 app.include_router(usage_router)
 app.include_router(billing_router)
 app.include_router(bots_router)
+app.include_router(analytics_router)
