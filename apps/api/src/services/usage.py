@@ -14,7 +14,7 @@ documents this trade-off).
 import logging
 from calendar import monthrange
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional, cast
 
 from pymongo import ReturnDocument
 from pymongo.asynchronous.collection import AsyncCollection
@@ -76,7 +76,9 @@ class UsageService:
             return PlanTier.FREE.value
         return sub.get("plan") or PlanTier.FREE.value
 
-    async def get_or_create_period(self, tenant_id: str, period_key: Optional[str] = None) -> dict:
+    async def get_or_create_period(
+        self, tenant_id: str, period_key: Optional[str] = None
+    ) -> dict[str, Any]:
         """Atomically fetch or create the usage record for the current period."""
         period_key = period_key or current_period_key()
         start, end = period_bounds(period_key)
@@ -101,7 +103,8 @@ class UsageService:
             upsert=True,
             return_document=ReturnDocument.AFTER,
         )
-        return doc
+        # upsert=True with return_document=AFTER always yields a doc.
+        return cast(dict[str, Any], doc)
 
     async def increment(
         self,
@@ -111,7 +114,7 @@ class UsageService:
         documents: int = 0,
         chunks: int = 0,
         embedding_tokens: int = 0,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Atomically increment counters; create the period record if missing.
 
         Returns the post-increment usage document.
@@ -149,7 +152,7 @@ class UsageService:
             upsert=True,
             return_document=ReturnDocument.AFTER,
         )
-        return doc
+        return cast(dict[str, Any], doc)
 
     async def check_query_quota(self, tenant_id: str) -> None:
         """Reserve one query against the monthly quota.
