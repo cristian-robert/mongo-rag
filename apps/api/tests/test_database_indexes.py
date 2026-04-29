@@ -21,6 +21,7 @@ async def test_ensure_indexes_creates_expected_indexes():
         "password_reset_tokens",
         "ws_tickets",
         "usage",
+        "bots",
     ]:
         mock_col = MagicMock()
         mock_col.create_index = AsyncMock()
@@ -39,6 +40,7 @@ async def test_ensure_indexes_creates_expected_indexes():
     mock_settings.mongodb_collection_reset_tokens = "password_reset_tokens"
     mock_settings.mongodb_collection_ws_tickets = "ws_tickets"
     mock_settings.mongodb_collection_usage = "usage"
+    mock_settings.mongodb_collection_bots = "bots"
 
     await ensure_indexes(mock_db, mock_settings)
 
@@ -86,4 +88,14 @@ async def test_ensure_indexes_creates_expected_indexes():
     # usage: unique compound (tenant_id + period_key)
     collections["usage"].create_index.assert_any_call(
         [("tenant_id", 1), ("period_key", 1)], unique=True, background=True
+    )
+
+    # bots: tenant-scoped listing
+    collections["bots"].create_index.assert_any_call(
+        [("tenant_id", 1), ("created_at", -1)], background=True
+    )
+
+    # bots: unique slug per tenant
+    collections["bots"].create_index.assert_any_call(
+        [("tenant_id", 1), ("slug", 1)], unique=True, background=True
     )

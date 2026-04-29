@@ -76,6 +76,11 @@ class Settings(BaseSettings):
         description="Collection for per-tenant per-period usage counters",
     )
 
+    mongodb_collection_bots: str = Field(
+        default="bots",
+        description="Collection for tenant-scoped bot configurations",
+    )
+
     # LLM Configuration (OpenAI-compatible)
     llm_provider: str = Field(
         default="openrouter",
