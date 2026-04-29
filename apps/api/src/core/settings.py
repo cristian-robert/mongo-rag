@@ -156,6 +156,34 @@ class Settings(BaseSettings):
         description="From address for password reset emails",
     )
 
+    # Stripe Configuration
+    stripe_secret_key: Optional[str] = Field(
+        default=None,
+        description="Stripe secret API key (sk_test_... in test mode, sk_live_... in production)",
+    )
+
+    stripe_publishable_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stripe publishable key (pk_test_... / pk_live_...) — safe to expose to clients"
+        ),
+    )
+
+    stripe_webhook_secret: Optional[str] = Field(
+        default=None,
+        description="Stripe webhook signing secret (whsec_...) — used by webhook handler in #43",
+    )
+
+    # Stripe Price IDs — one per (plan, model_tier) combination.
+    stripe_price_pro_starter: Optional[str] = Field(default=None)
+    stripe_price_pro_standard: Optional[str] = Field(default=None)
+    stripe_price_pro_premium: Optional[str] = Field(default=None)
+    stripe_price_pro_ultra: Optional[str] = Field(default=None)
+    stripe_price_enterprise_starter: Optional[str] = Field(default=None)
+    stripe_price_enterprise_standard: Optional[str] = Field(default=None)
+    stripe_price_enterprise_premium: Optional[str] = Field(default=None)
+    stripe_price_enterprise_ultra: Optional[str] = Field(default=None)
+
 
 def load_settings() -> Settings:
     """Load settings with proper error handling."""
