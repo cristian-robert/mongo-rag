@@ -1,0 +1,14 @@
+{
+  "name": "mongorag-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "End-to-end Playwright harness for MongoRAG. Skipped unless E2E=1.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "install-browsers": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}
