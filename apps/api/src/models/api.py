@@ -16,6 +16,39 @@ class IngestResponse(BaseModel):
     task_id: str = Field(..., description="Celery task ID for tracking")
 
 
+class IngestURLRequest(BaseModel):
+    """Request body for URL-based document ingestion."""
+
+    url: str = Field(
+        ...,
+        min_length=1,
+        max_length=2048,
+        description="HTTP(S) URL to fetch and ingest",
+    )
+    title: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Override document title (defaults to <title> or hostname/path)",
+    )
+    metadata: Optional[dict] = Field(
+        default=None,
+        description="Optional caller-supplied metadata (merged onto extracted metadata)",
+    )
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_scheme(cls, v: str) -> str:
+        """Surface scheme errors as Pydantic validation errors (422)."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(v.strip())
+        if parsed.scheme.lower() not in {"http", "https"}:
+            raise ValueError("URL must use http or https scheme")
+        if not parsed.hostname:
+            raise ValueError("URL must include a hostname")
+        return v.strip()
+
+
 class DocumentStatusResponse(BaseModel):
     """Response from document status endpoint."""
 
