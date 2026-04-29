@@ -1,0 +1,109 @@
+# Production-like compose: pulls pinned images from GHCR rather than
+# building locally. Use with a real MongoDB Atlas URI in MONGODB_URI.
+#
+# Usage:
+#   IMAGE_TAG=sha-abc1234 docker compose -f docker-compose.prod.yml up -d
+#
+# Secrets must be supplied via environment / Docker secrets / platform
+# secret manager — never committed.
+
+services:
+  api:
+    image: ghcr.io/${GITHUB_REPOSITORY:-cristian-robert/mongo-rag}/api:${IMAGE_TAG:-latest}
+    pull_policy: always
+    expose:
+      - "8100"
+    ports:
+      - "127.0.0.1:8100:8100"
+    environment:
+      MONGODB_URI: ${MONGODB_URI:?set MONGODB_URI in env}
+      LLM_API_KEY: ${LLM_API_KEY:?set LLM_API_KEY in env}
+      EMBEDDING_API_KEY: ${EMBEDDING_API_KEY:?set EMBEDDING_API_KEY in env}
+      LLM_MODEL: ${LLM_MODEL:-anthropic/claude-haiku-4.5}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/health',timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+      restart_policy:
+        condition: any
+        delay: 10s
+        max_attempts: 5
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+      - /app/cache:size=512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  web:
+    image: ghcr.io/${GITHUB_REPOSITORY:-cristian-robert/mongo-rag}/web:${IMAGE_TAG:-latest}
+    pull_policy: always
+    expose:
+      - "3100"
+    ports:
+      - "127.0.0.1:3100:3100"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?set NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:?set NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:?set NEXTAUTH_URL}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3100/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+      restart_policy:
+        condition: any
+        delay: 10s
+        max_attempts: 5
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  widget:
+    image: ghcr.io/${GITHUB_REPOSITORY:-cristian-robert/mongo-rag}/widget:${IMAGE_TAG:-latest}
+    pull_policy: always
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.1"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true

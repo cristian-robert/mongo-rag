@@ -1,0 +1,157 @@
+name: Build & Publish Images
+
+# Build, scan, sign, and publish container images to GitHub Container
+# Registry. This workflow ONLY produces artifacts; it does not deploy
+# to any runtime target. Promotion to staging/prod is performed by
+# downstream platform-specific workflows or the manual runbook (see
+# docs/deployment.md).
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+concurrency:
+  group: build-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write       # OIDC for cosign keyless signing
+  attestations: write   # GitHub provenance attestations
+  security-events: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAMESPACE: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build & publish ${{ matrix.service.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: api
+            context: ./apps/api
+          - name: web
+            context: ./apps/web
+          - name: widget
+            context: ./packages/widget
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.service.context }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,scope=${{ matrix.service.name }},mode=max
+          provenance: true
+          sbom: true
+
+      # ─── Vulnerability scan (Trivy) ───────────────────────────
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service.name }}@${{ steps.build.outputs.digest }}
+          format: sarif
+          output: trivy-${{ matrix.service.name }}.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          ignore-unfixed: true
+
+      - name: Upload Trivy scan to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.service.name }}.sarif
+          category: trivy-${{ matrix.service.name }}
+
+      # ─── SBOM artifact (in addition to docker buildx --sbom) ──
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service.name }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.service.name }}.spdx.json
+          upload-artifact: true
+          upload-artifact-retention: 30
+
+      # ─── Keyless signing (cosign + OIDC) ──────────────────────
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign image (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service.name }}@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE_REF"
+
+      # ─── Build provenance attestation ─────────────────────────
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/${{ matrix.service.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  # ─── Promotion gate ──────────────────────────────────────────
+  # Marks a build as eligible for staging/prod. Real deploys are
+  # performed by separate workflows (Railway/Fly/ECS/etc.) — see
+  # docs/deployment.md.
+  ready-to-deploy:
+    name: Mark images ready
+    needs: build
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAMESPACE: ${{ github.repository }}
+      COMMIT_SHA: ${{ github.sha }}
+    steps:
+      - name: Summary
+        run: |
+          short_sha="${COMMIT_SHA:0:7}"
+          {
+            echo "## Container images published"
+            echo
+            for svc in api web widget; do
+              echo "- \`ghcr.io/${IMAGE_NAMESPACE}/${svc}:sha-${short_sha}\`"
+            done
+            echo
+            echo "Promote with the runbook in \`docs/deployment.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"

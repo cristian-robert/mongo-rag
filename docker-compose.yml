@@ -1,23 +1,88 @@
+# Development / local-test compose stack.
+# For production-like layout (registry images, non-bind volumes), see
+# docker-compose.prod.yml.
+
 services:
   api:
-    build: ./apps/api
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: mongorag-api:dev
     ports:
       - "8100:8100"
     env_file:
-      - ./apps/api/.env
+      - path: ./apps/api/.env
+        required: false
+    environment:
+      # Override MONGODB_URI to point at the local mongo service when
+      # apps/api/.env doesn't already set one.
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/mongorag}
+    depends_on:
+      mongo:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/health').status==200 else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/health',timeout=5).status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
+    restart: unless-stopped
 
   web:
-    build: ./apps/web
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    image: mongorag-web:dev
     ports:
       - "3100:3100"
     env_file:
-      - ./apps/web/.env
+      - path: ./apps/web/.env
+        required: false
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://api:8100}
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3100/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  widget:
+    build:
+      context: ./packages/widget
+      dockerfile: Dockerfile
+    image: mongorag-widget:dev
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  # Local MongoDB for development. In production, point MONGODB_URI at
+  # MongoDB Atlas (Vector Search requires Atlas) — do NOT run mongo here.
+  mongo:
+    image: mongo:7.0.16
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
+  mongo-config:

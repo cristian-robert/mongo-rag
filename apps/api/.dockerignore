@@ -1,0 +1,46 @@
+# Build hygiene — keep image small, prevent secret leakage.
+
+# Secrets — never bake into image
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# VCS / editor
+.git
+.gitignore
+.idea
+.vscode
+*.swp
+.DS_Store
+
+# Python build artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+*.egg-info
+build
+dist
+.venv
+venv
+env
+
+# Tests / docs (not needed at runtime)
+tests
+docs
+README.md
+*.md
+
+# Node / JS leftovers
+node_modules
+
+# Logs
+*.log
+logs
