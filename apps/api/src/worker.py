@@ -89,7 +89,7 @@ def ingest_document(
             from src.services.ingestion.ingest import DocumentIngestionPipeline, IngestionConfig
 
             config = IngestionConfig()
-            pipeline = DocumentIngestionPipeline(config=config)
+            pipeline = DocumentIngestionPipeline(config=config, tenant_id=tenant_id)
             content, docling_doc = pipeline.read_document(temp_path)
 
             if not content.strip():
@@ -326,7 +326,7 @@ def ingest_url(
                 f.write(fetched.content)
 
             config = IngestionConfig()
-            pipeline = DocumentIngestionPipeline(config=config)
+            pipeline = DocumentIngestionPipeline(config=config, tenant_id=tenant_id)
 
             content = ""
             docling_doc = None

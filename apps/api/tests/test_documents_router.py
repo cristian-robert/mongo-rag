@@ -231,25 +231,29 @@ def test_patch_document_rejects_empty_body(app_client):
 
 
 @pytest.mark.unit
-def test_patch_document_ignores_tenant_id_in_body(app_client):
-    """Even if caller sends tenant_id, server uses auth value."""
+def test_patch_document_rejects_tenant_id_in_body(app_client):
+    """Forged tenant_id in the request body is rejected with 400.
+
+    Per #44, tenant_id must NEVER come from the client. We previously
+    silently dropped it via Pydantic ``extra="forbid"``; now the
+    RejectClientTenantIdMiddleware fails the request closed so the bug
+    surfaces immediately on either the client or an attacker.
+    """
     client, _ = app_client
-    updated = _make_doc("doc-1")
 
     with patch("src.routers.documents.IngestionService") as svc_cls:
         svc = MagicMock()
-        svc.update_metadata = AsyncMock(return_value=updated)
+        svc.update_metadata = AsyncMock()
         svc_cls.return_value = svc
 
-        # tenant_id is silently dropped by the request model
         response = client.patch(
             "/api/v1/documents/doc-1",
             json={"title": "X", "tenant_id": "evil-tenant"},
             headers=make_auth_header(),
         )
-        assert response.status_code == 200
-        kwargs = svc.update_metadata.call_args.kwargs
-        assert kwargs["tenant_id"] == MOCK_TENANT_ID
+        assert response.status_code == 400
+        # Service must NOT have been called — middleware bounced the request.
+        svc.update_metadata.assert_not_called()
 
 
 @pytest.mark.unit
