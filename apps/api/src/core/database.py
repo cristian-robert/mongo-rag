@@ -90,6 +90,10 @@ async def ensure_indexes(db: AsyncDatabase, settings: Settings) -> None:
     await db[settings.mongodb_collection_conversations].create_index(
         [("tenant_id", 1), ("created_at", -1)], background=True
     )
+    # Conversations: analytics aggregations filter on tenant_id + updated_at
+    await db[settings.mongodb_collection_conversations].create_index(
+        [("tenant_id", 1), ("updated_at", -1)], background=True
+    )
 
     # API keys: tenant-scoped listing
     await db[settings.mongodb_collection_api_keys].create_index("tenant_id", background=True)
