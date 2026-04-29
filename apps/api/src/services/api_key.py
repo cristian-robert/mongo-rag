@@ -75,7 +75,7 @@ class APIKeyService:
 
         logger.info(
             "api_key_created",
-            extra={"tenant_id": tenant_id, "key_prefix": key_prefix, "name": name},
+            extra={"tenant_id": tenant_id, "key_prefix": key_prefix, "key_name": name},
         )
 
         return {

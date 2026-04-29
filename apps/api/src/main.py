@@ -1,6 +1,7 @@
 """FastAPI application factory."""
 
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.core.database import ensure_indexes
 from src.core.dependencies import AgentDependencies
 from src.core.middleware import TenantGuardMiddleware
+from src.core.observability import configure_logging, init_sentry
+from src.core.request_logging import RequestLoggingMiddleware, install_exception_handlers
 from src.routers.auth import router as auth_router
 from src.routers.billing import router as billing_router
 from src.routers.bots import router as bots_router
@@ -19,22 +22,34 @@ from src.routers.ingest import router as ingest_router
 from src.routers.keys import router as keys_router
 from src.routers.usage import router as usage_router
 
+# Install structured JSON logging before any module-level logger acquires
+# a handler from the default config.
+configure_logging(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    service="mongorag-api",
+)
+
+# Best-effort Sentry init — graceful no-op when DSN unset or SDK missing.
+init_sentry(
+    dsn=os.getenv("SENTRY_DSN"),
+    environment=os.getenv("APP_ENV", "development"),
+    release=os.getenv("SENTRY_RELEASE"),
+    traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0")),
+)
+
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and clean up application resources."""
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    logger.info("Starting MongoRAG API...")
+    logger.info("api_starting")
     deps = AgentDependencies()
     try:
         await deps.initialize()
         app.state.deps = deps
     except Exception as e:
-        logger.error("Failed to initialize: %s", e)
+        logger.error("api_initialize_failed", extra={"error": str(e)})
         app.state.deps = deps  # Store even on failure so health can report it
         yield
         return
@@ -46,9 +61,9 @@ async def lifespan(app: FastAPI):
     except Exception:
         await deps.cleanup()
         raise
-    logger.info("MongoRAG API started successfully")
+    logger.info("api_started")
     yield
-    logger.info("Shutting down MongoRAG API...")
+    logger.info("api_shutting_down")
     await deps.cleanup()
 
 
@@ -70,6 +85,14 @@ app.add_middleware(
 
 # Tenant guard middleware (safety net -- logs warnings, never blocks)
 app.add_middleware(TenantGuardMiddleware)
+
+# Request logging middleware — must be added LAST so it runs FIRST (Starlette
+# wraps middleware in reverse-add order). This guarantees every request, even
+# those rejected by tenant guard / CORS, gets a request_id + access log.
+app.add_middleware(RequestLoggingMiddleware)
+
+# Sanitized exception handlers — never leak stack traces to clients.
+install_exception_handlers(app)
 
 # Include routers
 app.include_router(health_router)

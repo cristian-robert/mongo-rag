@@ -9,6 +9,7 @@ from fastapi import Depends, Header, HTTPException, Request
 
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
+from src.core.observability import set_request_context
 from src.core.security import decode_jwt
 from src.core.settings import load_settings
 
@@ -53,6 +54,7 @@ async def get_tenant_id(
         tenant_id = _resolve_jwt(token)
 
     request.state.tenant_id = tenant_id
+    set_request_context(tenant_id=tenant_id)
     return tenant_id
 
 
@@ -122,6 +124,7 @@ async def get_tenant_id_from_jwt(
 
     tenant_id = _resolve_jwt(token)
     request.state.tenant_id = tenant_id
+    set_request_context(tenant_id=tenant_id)
     return tenant_id
 
 
