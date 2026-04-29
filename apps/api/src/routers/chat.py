@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
-from src.core.tenant import get_tenant_id
+from src.core.rate_limit_dep import enforce_query_quota
 from src.models.api import ChatRequest, ChatResponse, WSMessage
 from src.services.chat import ChatService, ConversationNotFoundError
 from src.services.ws_ticket import WSTicketService
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
 async def chat_endpoint(
     body: ChatRequest,
     request: Request,
-    tenant_id: str = Depends(get_tenant_id),
+    tenant_id: str = Depends(enforce_query_quota),
     deps: AgentDependencies = Depends(get_deps),
 ):
     """Handle a chat message.

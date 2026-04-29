@@ -114,4 +114,12 @@ async def ensure_indexes(db: AsyncDatabase, settings: Settings) -> None:
         "expires_at", expireAfterSeconds=60, background=True
     )
 
+    # Usage: unique per-tenant per-period record (atomic upsert target)
+    await _create_index_safe(
+        db[settings.mongodb_collection_usage],
+        [("tenant_id", 1), ("period_key", 1)],
+        unique=True,
+        background=True,
+    )
+
     logger.info("database_indexes_ensured")

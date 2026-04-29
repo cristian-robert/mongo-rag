@@ -71,6 +71,11 @@ class Settings(BaseSettings):
         description="Collection for short-lived WebSocket auth tickets",
     )
 
+    mongodb_collection_usage: str = Field(
+        default="usage",
+        description="Collection for per-tenant per-period usage counters",
+    )
+
     # LLM Configuration (OpenAI-compatible)
     llm_provider: str = Field(
         default="openrouter",

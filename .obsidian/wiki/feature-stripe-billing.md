@@ -36,7 +36,7 @@ _(updated as the feature ships)_
   - `POST /api/v1/billing/checkout` — creates a Checkout Session, returns redirect URL
   - `POST /api/v1/billing/portal` — creates a Customer Portal session
   - `POST /api/v1/billing/webhooks/stripe` — webhook receiver (signature-verified)
-- Quota enforcement is a FastAPI dependency that checks `subscriptions.usage` against `plan` limits and returns `402 Payment Required` when exceeded
+- Quota enforcement is a FastAPI dependency that checks plan limits and returns `429 Too Many Requests` with a `Retry-After` header when exceeded (see `[[feature-usage-metering-rate-limiting]]`)
 
 ## Key Takeaways
 

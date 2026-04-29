@@ -12,10 +12,13 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
+from src.core.rate_limit_dep import enforce_rate_limit
 from src.core.settings import Settings, load_settings
 from src.core.tenant import get_tenant_id
 from src.models.api import DocumentStatusResponse, IngestResponse
+from src.models.usage import QuotaExceededError
 from src.services.ingestion.service import IngestionService
+from src.services.usage import UsageService
 from src.worker import ingest_document
 
 logger = logging.getLogger(__name__)
@@ -81,7 +84,7 @@ async def ingest_document_endpoint(
     file: UploadFile = File(...),
     title: Optional[str] = Form(default=None),
     metadata: Optional[str] = Form(default=None),
-    tenant_id: str = Depends(get_tenant_id),
+    tenant_id: str = Depends(enforce_rate_limit),
     settings: Settings = Depends(_get_settings),
     deps: AgentDependencies = Depends(get_deps),
 ) -> IngestResponse:
@@ -93,6 +96,19 @@ async def ingest_document_endpoint(
     Returns 202 Accepted immediately with document_id and task_id.
     """
     ext = _validate_file(file, settings)
+
+    # Enforce documents-max quota before accepting the upload.
+    usage_service = UsageService(deps.usage_collection, deps.subscriptions_collection)
+    current_doc_count = await deps.documents_collection.count_documents({"tenant_id": tenant_id})
+    try:
+        await usage_service.check_document_quota(tenant_id, current_doc_count)
+    except QuotaExceededError as e:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Document quota exceeded ({e.used}/{e.limit})",
+            headers={"Retry-After": "3600", "X-Quota-Limit": str(e.limit)},
+        )
+
     # Sanitize filename to prevent path traversal
     safe_name = pathlib.Path(file.filename or "unknown").name if file.filename else ""
     source = safe_name or f"upload-{uuid.uuid4()}{ext}"
