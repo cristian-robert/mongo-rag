@@ -11,6 +11,7 @@ from src.core.database import ensure_indexes
 from src.core.dependencies import AgentDependencies
 from src.core.middleware import (
     BodySizeLimitMiddleware,
+    RejectClientTenantIdMiddleware,
     SecurityHeadersMiddleware,
     TenantGuardMiddleware,
 )
@@ -116,6 +117,11 @@ def _configure_middleware(application: FastAPI) -> None:
 
     # Tenant guard runs closest to the handler (added first → innermost).
     application.add_middleware(TenantGuardMiddleware)
+
+    # Reject any request that tries to supply tenant_id itself — defense in
+    # depth so the only tenant_id reachable from a handler is the one
+    # derived from the authenticated Principal.
+    application.add_middleware(RejectClientTenantIdMiddleware)
 
     # Body-size limit before tenant guard to reject oversized payloads
     # before any business logic runs.

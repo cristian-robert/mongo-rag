@@ -55,6 +55,7 @@ class DocumentIngestionPipeline:
     def __init__(
         self,
         config: IngestionConfig,
+        tenant_id: str,
         documents_folder: str = "documents",
         clean_before_ingest: bool = True,
     ):
@@ -63,10 +64,18 @@ class DocumentIngestionPipeline:
 
         Args:
             config: Ingestion configuration
+            tenant_id: Tenant the ingested data belongs to. Required — every
+                document and chunk inserted by this pipeline carries this
+                tenant_id so the multi-tenant isolation invariants hold even
+                for bulk CLI loads.
             documents_folder: Folder containing documents
-            clean_before_ingest: Whether to clean existing data before ingestion
+            clean_before_ingest: Whether to clean existing data for THIS
+                tenant before ingestion (never touches other tenants' data).
         """
+        if not tenant_id or not isinstance(tenant_id, str):
+            raise ValueError("tenant_id is required for ingestion (tenant isolation)")
         self.config = config
+        self.tenant_id = tenant_id
         self.documents_folder = documents_folder
         self.clean_before_ingest = clean_before_ingest
 
@@ -384,8 +393,9 @@ class DocumentIngestionPipeline:
         documents_collection = self.db[self.settings.mongodb_collection_documents]
         chunks_collection = self.db[self.settings.mongodb_collection_chunks]
 
-        # Insert document
+        # Insert document — tenant_id is locked from pipeline construction.
         document_dict = {
+            "tenant_id": self.tenant_id,
             "title": title,
             "source": source,
             "content": content,
@@ -402,6 +412,7 @@ class DocumentIngestionPipeline:
         chunk_dicts = []
         for chunk in chunks:
             chunk_dict = {
+                "tenant_id": self.tenant_id,
                 "document_id": document_id,
                 "content": chunk.content,
                 "embedding": chunk.embedding,  # Python list, NOT string!
@@ -420,19 +431,25 @@ class DocumentIngestionPipeline:
         return str(document_id)
 
     async def _clean_databases(self) -> None:
-        """Clean existing data from MongoDB collections."""
-        logger.warning("Cleaning existing data from MongoDB...")
+        """Clean existing data from MongoDB collections — tenant-scoped only.
+
+        Deletes only documents and chunks belonging to ``self.tenant_id``.
+        Cross-tenant data is never touched, even when ``clean_before_ingest``
+        is True for an admin-driven bulk reingest.
+        """
+        logger.warning("Cleaning existing data from MongoDB for tenant %s...", self.tenant_id)
 
         # Get collection references
         documents_collection = self.db[self.settings.mongodb_collection_documents]
         chunks_collection = self.db[self.settings.mongodb_collection_chunks]
 
-        # Delete all chunks first (to respect FK relationships)
-        chunks_result = await chunks_collection.delete_many({})
+        tenant_filter_q = {"tenant_id": self.tenant_id}
+        # Delete tenant chunks first to respect document/chunk relationship.
+        chunks_result = await chunks_collection.delete_many(tenant_filter_q)
         logger.info(f"Deleted {chunks_result.deleted_count} chunks")
 
-        # Delete all documents
-        docs_result = await documents_collection.delete_many({})
+        # Delete tenant documents.
+        docs_result = await documents_collection.delete_many(tenant_filter_q)
         logger.info(f"Deleted {docs_result.deleted_count} documents")
 
     async def _ingest_single_document(self, file_path: str) -> IngestionResult:
@@ -567,6 +584,15 @@ class DocumentIngestionPipeline:
 async def main() -> None:
     """Main function for running ingestion."""
     parser = argparse.ArgumentParser(description="Ingest documents into MongoDB vector database")
+    parser.add_argument(
+        "--tenant-id",
+        required=True,
+        help=(
+            "Tenant ID that the ingested documents and chunks will be stored "
+            "under. Required — every record carries this tenant_id and "
+            "--no-clean only affects this tenant's data."
+        ),
+    )
     parser.add_argument("--documents", "-d", default="documents", help="Documents folder path")
     parser.add_argument(
         "--no-clean", action="store_true", help="Skip cleaning existing data before ingestion"
@@ -599,6 +625,7 @@ async def main() -> None:
     # Create and run pipeline - clean by default unless --no-clean is specified
     pipeline = DocumentIngestionPipeline(
         config=config,
+        tenant_id=args.tenant_id,
         documents_folder=args.documents,
         clean_before_ingest=not args.no_clean,  # Clean by default
     )
