@@ -1,35 +1,70 @@
 /**
- * MongoRAG Embeddable Chat Widget
+ * MongoRAG Embeddable Chat Widget — entrypoint.
  *
  * Usage:
  *   <script src="https://cdn.mongorag.com/widget.js"
- *           data-api-key="mrag_..." />
+ *           data-api-key="mrag_..."
+ *           data-bot-id="..."
+ *           data-primary-color="#4f46e5"
+ *           data-position="bottom-right"></script>
+ *
+ * Or programmatic:
+ *   <script>
+ *     window.MongoRAG = { apiKey: "mrag_...", apiUrl: "https://api.mongorag.com" };
+ *   </script>
+ *   <script src="https://cdn.mongorag.com/widget.js"></script>
  */
 
-interface MongoRAGConfig {
-  apiKey: string;
-  apiUrl?: string;
+import { ConfigError, buildConfig, mergeConfig, parseScriptDataset, type RawConfigInput } from "./config.js";
+import { mountWidget } from "./widget.js";
+import type { WidgetConfig } from "./types.js";
+
+declare global {
+  interface Window {
+    MongoRAG?: RawConfigInput & {
+      mount?: (cfg: RawConfigInput) => void;
+    };
+  }
+}
+
+let mounted = false;
+
+function logWarning(message: string): void {
+  if (typeof console !== "undefined" && console.warn) {
+    console.warn(`[MongoRAG] ${message}`);
+  }
 }
 
 function init(): void {
+  if (mounted) return;
+
   const script = document.currentScript as HTMLScriptElement | null;
-  if (!script) return;
+  const datasetCfg = script ? parseScriptDataset(script) : undefined;
+  const windowCfgRaw = (window.MongoRAG ?? undefined) as RawConfigInput | undefined;
 
-  const config: MongoRAGConfig = {
-    apiKey: script.dataset.apiKey || "",
-    apiUrl: script.dataset.apiUrl || "",
-  };
+  const merged = mergeConfig(windowCfgRaw, datasetCfg);
 
-  if (!config.apiKey) {
-    console.warn("[MongoRAG] Missing data-api-key attribute");
+  let config: WidgetConfig;
+  try {
+    config = buildConfig(merged);
+  } catch (err) {
+    if (err instanceof ConfigError) {
+      logWarning(err.message);
+    } else {
+      logWarning("Failed to initialize widget");
+    }
     return;
   }
 
-  console.log("[MongoRAG] Widget initialized", { apiUrl: config.apiUrl });
+  mounted = true;
+  // Defer mount until DOM is interactive so document.body exists.
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => mountWidget(config), { once: true });
+  } else {
+    mountWidget(config);
+  }
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", init);
-} else {
+if (typeof window !== "undefined") {
   init();
 }
