@@ -231,6 +231,68 @@ class Settings(BaseSettings):
         ..., description="Shared secret for JWT signing (same as NEXTAUTH_SECRET in frontend)"
     )
 
+    # --- Supabase Auth ---
+    # The backend verifies Supabase-issued JWTs. Verification path:
+    # 1. If a SUPABASE_JWT_SECRET is configured AND the token is HS256 → verify with shared secret
+    # 2. Otherwise (RS256/ES256/etc.) → fetch & cache JWKS from
+    #    https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json and verify by `kid`
+    # Issuer / audience are pinned from these settings, never from the token itself.
+    supabase_url: Optional[str] = Field(
+        default=None,
+        description=(
+            "Supabase project URL, e.g. https://<project-ref>.supabase.co. "
+            "When set, Supabase JWTs are accepted and the backend pins the expected issuer "
+            "to <supabase_url>/auth/v1."
+        ),
+    )
+
+    supabase_project_ref: Optional[str] = Field(
+        default=None,
+        description=(
+            "Supabase project ref (shorthand). Optional — derived from supabase_url when omitted."
+        ),
+    )
+
+    supabase_jwt_secret: Optional[str] = Field(
+        default=None,
+        description=(
+            "Supabase legacy HS256 shared JWT secret. Optional — when omitted, the backend "
+            "verifies via the project's JWKS endpoint. Server-only; never expose to clients."
+        ),
+    )
+
+    supabase_jwt_audience: str = Field(
+        default="authenticated",
+        description=(
+            "Expected `aud` claim on Supabase user JWTs. Defaults to 'authenticated' "
+            "(Supabase's standard for signed-in users)."
+        ),
+    )
+
+    supabase_jwks_cache_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=86400,
+        description="How long to cache the Supabase JWKS document (seconds).",
+    )
+
+    @property
+    def supabase_issuer(self) -> Optional[str]:
+        """Expected `iss` claim for Supabase-signed user JWTs.
+
+        Returns None when Supabase is not configured (Supabase auth disabled).
+        """
+        if not self.supabase_url:
+            return None
+        return f"{self.supabase_url.rstrip('/')}/auth/v1"
+
+    @property
+    def supabase_jwks_url(self) -> Optional[str]:
+        """JWKS endpoint URL for the configured Supabase project."""
+        if not self.supabase_url:
+            return None
+        return f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+
     resend_api_key: Optional[str] = Field(
         default=None,
         description="Resend API key for transactional emails (required for password reset)",
