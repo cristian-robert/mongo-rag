@@ -23,13 +23,21 @@ def test_chat_tenant_a_cannot_see_tenant_b_conversations(client, mock_deps):
             pass
 
         async def handle_message(
-            self, *, message, tenant_id, conversation_id=None, search_type=None
+            self,
+            *,
+            message,
+            tenant_id,
+            conversation_id=None,
+            search_type=None,
+            retrieval=None,
         ):
             captured_tenant_ids.append(tenant_id)
             return {
                 "answer": "test",
                 "sources": [],
+                "citations": [],
                 "conversation_id": "conv-1",
+                "rewritten_queries": [],
             }
 
     with patch("src.routers.chat.ChatService", MockChatService):

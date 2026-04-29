@@ -306,6 +306,7 @@ async def hybrid_search(
     tenant_id: str,
     match_count: Optional[int] = None,
     text_weight: Optional[float] = None,
+    rrf_k: Optional[int] = None,
 ) -> List[SearchResult]:
     """
     Perform hybrid search combining semantic and keyword matching.
@@ -319,6 +320,7 @@ async def hybrid_search(
         tenant_id: Tenant ID for isolation.
         match_count: Number of results to return (default: 10).
         text_weight: Weight for text matching (0-1, not used with RRF).
+        rrf_k: Override the RRF constant (default from settings, typically 60).
 
     Returns:
         List of search results sorted by combined RRF score.
@@ -331,10 +333,18 @@ async def hybrid_search(
         # Validate match count
         match_count = min(match_count, deps.settings.max_match_count)
 
+        if rrf_k is None:
+            rrf_k = getattr(deps.settings, "rrf_k", 60)
+
         # Over-fetch for better RRF results (2x requested count)
         fetch_count = match_count * 2
 
-        logger.info("hybrid_search starting: query='%s', match_count=%d", query, match_count)
+        logger.info(
+            "hybrid_search starting: query='%s', match_count=%d, rrf_k=%d",
+            query,
+            match_count,
+            rrf_k,
+        )
 
         # Run both searches concurrently for performance
         semantic_results, text_results = await asyncio.gather(
@@ -359,7 +369,7 @@ async def hybrid_search(
         # Merge results using Reciprocal Rank Fusion
         merged_results = reciprocal_rank_fusion(
             [semantic_results, text_results],
-            k=60,  # Standard RRF constant
+            k=rrf_k,
         )
 
         # Return top N results

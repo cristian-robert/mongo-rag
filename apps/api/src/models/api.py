@@ -145,6 +145,26 @@ class ReingestResponse(BaseModel):
 # --- Chat ---
 
 
+class RetrievalConfig(BaseModel):
+    """Per-request retrieval tuning. Optional — defaults preserve existing behavior."""
+
+    match_count: Optional[int] = Field(
+        default=None, ge=1, le=50, description="Top-k chunks (default from settings)."
+    )
+    rrf_k: Optional[int] = Field(
+        default=None, ge=1, le=200, description="RRF constant (default 60)."
+    )
+    rerank: Optional[bool] = Field(
+        default=None, description="Override reranker enabled flag for this request."
+    )
+    rerank_top_n: Optional[int] = Field(
+        default=None, ge=1, le=50, description="Number of candidates to feed the reranker."
+    )
+    query_rewrite: Optional[bool] = Field(
+        default=None, description="Override query rewriting flag for this request."
+    )
+
+
 class ChatRequest(StrictRequest):
     """Request body for chat endpoint."""
 
@@ -154,6 +174,9 @@ class ChatRequest(StrictRequest):
     )
     search_type: Literal["semantic", "text", "hybrid"] = Field(
         default="hybrid", description="Search type: semantic, text, hybrid"
+    )
+    retrieval: Optional[RetrievalConfig] = Field(
+        default=None, description="Optional per-request retrieval tuning."
     )
 
 
@@ -165,12 +188,39 @@ class SourceReference(BaseModel):
     snippet: str
 
 
+class Citation(BaseModel):
+    """A numbered inline citation extracted from the assistant's answer.
+
+    ``marker`` is the integer used in the answer text (e.g. ``[1]``).
+    ``relevance_score`` is the post-rerank score when reranking is enabled,
+    otherwise the upstream RRF/vector/text score.
+    """
+
+    marker: int = Field(..., ge=1, description="Citation marker number used in the answer.")
+    chunk_id: str
+    document_id: str
+    document_title: str
+    document_source: str
+    heading_path: list[str] = Field(default_factory=list)
+    snippet: str
+    relevance_score: float
+    page_number: Optional[int] = None
+
+
 class ChatResponse(BaseModel):
     """Response from chat endpoint (non-streaming)."""
 
     answer: str
     sources: list[SourceReference] = Field(default_factory=list)
+    citations: list[Citation] = Field(
+        default_factory=list,
+        description="Inline citations resolved from [n] markers in the answer.",
+    )
     conversation_id: str
+    rewritten_queries: list[str] = Field(
+        default_factory=list,
+        description="Additional retrieval queries derived from the user message (debug/eval).",
+    )
 
 
 # --- WebSocket ---
