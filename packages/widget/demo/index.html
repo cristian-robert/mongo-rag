@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MongoRAG Widget — Demo Host</title>
+    <style>
+      :root { color-scheme: light; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+        background: #f1f5f9;
+        color: #0f172a;
+      }
+      main { max-width: 720px; margin: 0 auto; padding: 64px 24px; }
+      h1 { font-size: 28px; letter-spacing: -0.02em; }
+      p { color: #475569; line-height: 1.6; }
+      code {
+        background: #e2e8f0;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>MongoRAG Widget Demo</h1>
+      <p>
+        This page exists only to manually verify the widget. Set
+        <code>data-api-key</code> and <code>data-api-url</code> to point at a
+        running MongoRAG API and you should see the chat launcher in the
+        bottom-right corner.
+      </p>
+      <p>
+        Test plan: open the widget, send a message, confirm tokens stream in
+        and the conversation_id persists across page reloads.
+      </p>
+    </main>
+
+    <!-- Replace with a real key + URL when manually testing. -->
+    <script
+      src="../dist/widget.js"
+      data-api-key="mrag_demoreplaceme"
+      data-api-url="http://localhost:8100"
+      data-bot-name="DemoBot"
+      data-primary-color="#0f172a"
+      data-position="bottom-right"
+    ></script>
+  </body>
+</html>
