@@ -129,6 +129,10 @@ class AgentDependencies:
     def usage_collection(self) -> AsyncCollection:
         return self._get_collection(self.settings.mongodb_collection_usage)
 
+    @property
+    def bots_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_bots)
+
     # -- Core methods --
 
     async def cleanup(self) -> None:

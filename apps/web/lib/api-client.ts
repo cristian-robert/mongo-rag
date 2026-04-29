@@ -52,7 +52,7 @@ export class ApiError extends Error {
 }
 
 type RequestOptions = {
-  method?: "GET" | "POST" | "DELETE" | "PATCH";
+  method?: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   body?: unknown;
 };
 

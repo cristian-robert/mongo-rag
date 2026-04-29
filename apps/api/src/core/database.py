@@ -122,4 +122,17 @@ async def ensure_indexes(db: AsyncDatabase, settings: Settings) -> None:
         background=True,
     )
 
+    # Bots: tenant-scoped listing
+    await db[settings.mongodb_collection_bots].create_index(
+        [("tenant_id", 1), ("created_at", -1)], background=True
+    )
+
+    # Bots: unique slug per tenant (enforces conflict detection on create)
+    await _create_index_safe(
+        db[settings.mongodb_collection_bots],
+        [("tenant_id", 1), ("slug", 1)],
+        unique=True,
+        background=True,
+    )
+
     logger.info("database_indexes_ensured")
