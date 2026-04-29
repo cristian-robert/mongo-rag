@@ -136,6 +136,30 @@ class Settings(BaseSettings):
         default="/tmp/mongorag-uploads", description="Temporary directory for uploaded files"
     )
 
+    # URL Ingestion Configuration
+    url_fetch_timeout_seconds: float = Field(
+        default=30.0,
+        description="Total timeout for fetching a remote URL (connect + read)",
+    )
+
+    url_fetch_max_redirects: int = Field(
+        default=3,
+        description="Maximum redirects to follow when fetching a URL",
+    )
+
+    url_fetch_max_size_mb: int = Field(
+        default=25,
+        description="Maximum response size in MB for URL ingestion",
+    )
+
+    url_fetch_allow_private_ips: bool = Field(
+        default=False,
+        description=(
+            "Allow URL fetcher to connect to private/loopback/link-local IP ranges. "
+            "MUST stay false in production — only flip on for tests against localhost."
+        ),
+    )
+
     # Auth Configuration
     nextauth_secret: str = Field(
         ..., description="Shared secret for JWT signing (same as NEXTAUTH_SECRET in frontend)"

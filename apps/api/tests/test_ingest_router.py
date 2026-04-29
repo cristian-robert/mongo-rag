@@ -155,3 +155,89 @@ def test_document_status_not_found(app_client):
         )
 
         assert response.status_code == 404
+
+
+# --- URL ingestion endpoint -----------------------------------------------
+
+
+@pytest.mark.unit
+def test_ingest_url_rejects_invalid_scheme(app_client):
+    """POST /ingest-url with file:// returns 422 from Pydantic validator."""
+    client, _ = app_client
+    response = client.post(
+        "/api/v1/documents/ingest-url",
+        json={"url": "file:///etc/passwd"},
+        headers=make_auth_header(),
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.unit
+def test_ingest_url_rejects_missing_auth(app_client):
+    """Missing JWT returns 401."""
+    client, _ = app_client
+    response = client.post(
+        "/api/v1/documents/ingest-url",
+        json={"url": "https://example.com/"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.unit
+def test_ingest_url_rejects_private_ip(app_client):
+    """Private-IP URL is rejected at request time (422), not after enqueue."""
+    client, _ = app_client
+    response = client.post(
+        "/api/v1/documents/ingest-url",
+        json={"url": "http://10.0.0.1/secret"},
+        headers=make_auth_header(),
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.unit
+def test_ingest_url_rejects_credentials_in_url(app_client):
+    """URLs with embedded credentials are rejected."""
+    client, _ = app_client
+    with patch(
+        "src.services.ingestion.url_loader.socket.getaddrinfo",
+        return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+    ):
+        response = client.post(
+            "/api/v1/documents/ingest-url",
+            json={"url": "https://user:pw@example.com/"},
+            headers=make_auth_header(),
+        )
+    assert response.status_code == 422
+
+
+@pytest.mark.unit
+def test_ingest_url_dispatches_celery_task(app_client):
+    """Valid URL returns 202 with document_id and task_id."""
+    client, _ = app_client
+
+    with (
+        patch("src.routers.ingest.ingest_url") as mock_task,
+        patch("src.routers.ingest.IngestionService") as mock_service_cls,
+        patch(
+            "src.services.ingestion.url_loader.socket.getaddrinfo",
+            return_value=[(2, 1, 6, "", ("93.184.216.34", 0))],
+        ),
+    ):
+        mock_task.delay.return_value = MagicMock(id="celery-url-task-456")
+        mock_service = MagicMock()
+        mock_service.create_pending_document = AsyncMock(return_value="doc-url-789")
+        mock_service.update_status = AsyncMock()
+        mock_service_cls.return_value = mock_service
+
+        response = client.post(
+            "/api/v1/documents/ingest-url",
+            json={"url": "https://example.com/article", "title": "Override"},
+            headers=make_auth_header(),
+        )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["document_id"] == "doc-url-789"
+    assert body["status"] == "pending"
+    assert body["task_id"] == "celery-url-task-456"
