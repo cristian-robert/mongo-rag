@@ -113,9 +113,7 @@ SEED_CHUNKS = [
     {
         "tenant_id": SEED_TENANT_ID,
         "document_id": "will-be-set",
-        "chunk_id": ChunkModel.generate_chunk_id(
-            _SEED_SOURCE, 1, 0, _CHUNK_0_CONTENT
-        ),
+        "chunk_id": ChunkModel.generate_chunk_id(_SEED_SOURCE, 1, 0, _CHUNK_0_CONTENT),
         "content": _CHUNK_0_CONTENT,
         "embedding": [0.0] * 1536,
         "chunk_index": 0,
@@ -130,9 +128,7 @@ SEED_CHUNKS = [
     {
         "tenant_id": SEED_TENANT_ID,
         "document_id": "will-be-set",
-        "chunk_id": ChunkModel.generate_chunk_id(
-            _SEED_SOURCE, 1, 1, _CHUNK_1_CONTENT
-        ),
+        "chunk_id": ChunkModel.generate_chunk_id(_SEED_SOURCE, 1, 1, _CHUNK_1_CONTENT),
         "content": _CHUNK_1_CONTENT,
         "embedding": [0.0] * 1536,
         "chunk_index": 1,
@@ -206,9 +202,7 @@ async def seed() -> None:
             settings.mongodb_collection_subscriptions,
             settings.mongodb_collection_conversations,
         ]:
-            result = await db[coll_name].delete_many(
-                {"tenant_id": SEED_TENANT_ID}
-            )
+            result = await db[coll_name].delete_many({"tenant_id": SEED_TENANT_ID})
             if result.deleted_count > 0:
                 logger.info(
                     "  Cleaned %d docs from %s",
@@ -226,33 +220,23 @@ async def seed() -> None:
         await db[settings.mongodb_collection_api_keys].insert_one(SEED_API_KEY)
         logger.info("  Seeded API key: %s...", SEED_API_KEY["key_prefix"])
 
-        doc_result = await db[
-            settings.mongodb_collection_documents
-        ].insert_one(SEED_DOCUMENT)
+        doc_result = await db[settings.mongodb_collection_documents].insert_one(SEED_DOCUMENT)
         doc_id = str(doc_result.inserted_id)
-        logger.info(
-            "  Seeded document: %s (id=%s)", SEED_DOCUMENT["title"], doc_id
-        )
+        logger.info("  Seeded document: %s (id=%s)", SEED_DOCUMENT["title"], doc_id)
 
         for chunk in SEED_CHUNKS:
             chunk["document_id"] = doc_id
         await db[settings.mongodb_collection_chunks].insert_many(SEED_CHUNKS)
         logger.info("  Seeded %d chunks", len(SEED_CHUNKS))
 
-        await db[
-            settings.mongodb_collection_subscriptions
-        ].insert_one(SEED_SUBSCRIPTION)
+        await db[settings.mongodb_collection_subscriptions].insert_one(SEED_SUBSCRIPTION)
         logger.info("  Seeded subscription")
 
-        await db[
-            settings.mongodb_collection_conversations
-        ].insert_one(SEED_CONVERSATION)
+        await db[settings.mongodb_collection_conversations].insert_one(SEED_CONVERSATION)
         logger.info("  Seeded conversation")
 
         logger.info("Seed complete!")
-        logger.info(
-            "  Dev API key prefix: %s...", SEED_API_KEY["key_prefix"]
-        )
+        logger.info("  Dev API key prefix: %s...", SEED_API_KEY["key_prefix"])
     finally:
         await client.close()
 

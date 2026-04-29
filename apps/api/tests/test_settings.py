@@ -1,6 +1,5 @@
 """Tests for auth-related settings."""
 
-
 import pytest
 
 

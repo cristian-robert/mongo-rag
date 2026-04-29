@@ -1,0 +1,26 @@
+{
+  "$schema_version": 1,
+  "_doc": "Pinned versions of external skills the framework depends on. /setup hashes the installed SKILL.md content and warns on drift from `skill_md_sha256`. First-run /setup populates `skill_md_sha256` if it is empty.",
+  "external_skills": {
+    "huashu-design": {
+      "install_command": "npx skills add alchaincyf/huashu-design",
+      "tested_against_commit": "23f60d9b4304f20851469987c6e2c92242b94a45",
+      "tested_at": "2026-04-27",
+      "skill_md_sha256": "",
+      "expected_artifacts": [
+        "~/.claude/skills/huashu-design/SKILL.md"
+      ],
+      "schema_contract": {
+        "brand_spec_path": ".design-system/brand-spec.md",
+        "brand_spec_required_sections": [
+          "Identity",
+          "Assets",
+          "Tokens",
+          "Anti-fingerprints"
+        ]
+      },
+      "license_summary": "Personal/research use is free and unrestricted. Commercial / client / enterprise use requires authorization from the author (huasheng / 花叔). The framework dispatches huashu-design from /execute Step 2.5; first dispatch per repo writes .design-system/.huashu-license-ack to record acknowledgement.",
+      "drift_policy": "/setup hashes SKILL.md and compares to skill_md_sha256. On mismatch, warn the operator: the brand-spec.md schema may have changed; re-run /brand-extract and confirm output still matches the schema_contract above before relying on downstream design work."
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "generated": "2026-04-29T18:47:09.077Z",
+  "docs": [
+    {
+      "file": "decision-pydantic-ai-over-langchain.md",
+      "title": "\"Decision: Pydantic AI over LangChain\"",
+      "type": "decision",
+      "tags": [
+        "decision",
+        "pydantic-ai"
+      ],
+      "summary": "We chose Pydantic AI for the RAG agent instead of LangChain because it fits FastAPI naturally, has a far smaller surface area, and treats type safety as a fi..."
+    },
+    {
+      "file": "feature-api-key-management.md",
+      "title": "\"Feature: API Key Management\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "auth",
+        "security",
+        "mongodb"
+      ],
+      "summary": "Customers create and revoke API keys for the embeddable widget and programmatic access."
+    },
+    {
+      "file": "feature-document-ingestion.md",
+      "title": "\"Feature: Document Ingestion\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "rag",
+        "ingestion",
+        "mongodb"
+      ],
+      "summary": "The pipeline that turns customer-uploaded documents into searchable chunks."
+    },
+    {
+      "file": "feature-rag-agent.md",
+      "title": "\"Feature: RAG Agent\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "rag",
+        "search",
+        "pydantic-ai"
+      ],
+      "summary": "The customer-facing chatbot."
+    },
+    {
+      "file": "feature-stripe-billing.md",
+      "title": "\"Feature: Stripe Billing\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "billing"
+      ],
+      "summary": "Stripe-powered subscription billing for the MongoRAG SaaS."
+    },
+    {
+      "file": "hybrid-rrf-search.md",
+      "title": "\"Hybrid RRF Search\"",
+      "type": "concept",
+      "tags": [
+        "rag",
+        "search",
+        "mongodb"
+      ],
+      "summary": "MongoRAG uses three-tier hybrid retrieval: a `$vectorSearch` over OpenAI embeddings, an Atlas `$search` text query with fuzzy matching, and a Reciprocal Rank..."
+    },
+    {
+      "file": "multi-tenancy-tenant-isolation.md",
+      "title": "\"Multi-Tenancy: Tenant Isolation\"",
+      "type": "concept",
+      "tags": [
+        "multi-tenancy",
+        "security",
+        "mongodb"
+      ],
+      "summary": "MongoRAG runs all customers on a shared MongoDB cluster."
+    }
+  ]
+}

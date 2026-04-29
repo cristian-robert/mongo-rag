@@ -6,6 +6,8 @@ Multi-tenant AI chatbot SaaS powered by RAG. Customers sign up, upload documents
 
 Built on top of [coleam00/MongoDB-RAG-Agent](https://github.com/coleam00/MongoDB-RAG-Agent) — a working RAG agent with hybrid search (RRF), Docling-based ingestion, pluggable LLM providers, and MongoDB Atlas Vector Search.
 
+This repo also runs the **AIDevelopmentFramework** (PIV+E loop) for development discipline. See "Pipeline Commands" below.
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -28,6 +30,9 @@ Built on top of [coleam00/MongoDB-RAG-Agent](https://github.com/coleam00/MongoDB
 3. **YAGNI** — MVP first, enhancements later. Build only what's needed now.
 4. **TENANT ISOLATION** — Every database query must include `tenant_id`. This is the most critical security boundary.
 5. **ASYNC EVERYTHING** — All I/O (MongoDB, HTTP, embedding calls) must be async with proper await.
+6. **Context is precious** — manage it deliberately; recommend context resets for complex work.
+7. **Plans are artifacts** — survive session boundaries; pass the "no prior knowledge" test.
+8. **The system self-improves** — every AI mistake becomes a rule, pattern, or guardrail (`/evolve`).
 
 ## Architecture
 
@@ -53,6 +58,9 @@ mongo-rag/
 ├── docs/
 │   ├── architecture.md
 │   └── ROADMAP.md
+├── .obsidian/               # Knowledge Base (raw + wiki + _search)
+├── .claude/                 # Framework rules, agents, references
+├── cli/                     # KB CLI tool (kb-search.js)
 ├── CLAUDE.md
 └── LICENSE
 ```
@@ -88,6 +96,48 @@ mongo-rag/
 **When:** After web UI changes, before claiming web frontend work is done.
 **How:** Agent tool → `subagent_type: "general-purpose"`, `model: "sonnet"`. Prompt: `You are the tester-agent for the MongoRAG project. Read .claude/agents/tester-agent/AGENT.md for your instructions. Then run this test:`
 **Queries:** `VERIFY page:<path> Checks: <list>` or `FLOW: <scenario> Steps: 1. ... 2. ...`
+
+---
+
+## Pipeline Commands (PIV+E)
+
+Plan → Implement → Validate → Evolve. Use these for non-trivial work.
+
+| Command | Phase | Purpose |
+|---------|-------|---------|
+| `/start` | Router | Detects scope level, routes to correct pipeline |
+| `/prime` | Plan | Loads codebase context into session |
+| `/create-prd` | Plan | Generates PRD from idea (includes brainstorming) |
+| `/plan-project` | Plan | Decomposes PRD into GitHub milestones + issues |
+| `/plan-feature` | Plan | Creates detailed implementation plan for a feature |
+| `/execute` | Implement | Executes plan with TDD, domain skills, parallel agents |
+| `/validate` | Validate | Runs verification, testing agents, code review |
+| `/ship` | Validate | Commits, pushes, creates PR, finishes branch |
+| `/evolve` | Evolve | Updates rules and knowledge base from learnings |
+| `/setup` | Utility | Checks installed plugins/skills, reports health |
+
+### Scope Levels
+
+- **L0 (Project):** /brainstorm → /create-prd → /plan-project → per-issue L2
+- **L1 (Feature):** /brainstorm → /plan-feature → creates issue(s) → per-issue L2
+- **L2 (Issue):** gh issue view → /prime → /writing-plans → /execute → /validate → /ship
+- **L3 (Bug):** gh issue view → /prime → /systematic-debugging → fix → /validate → /ship
+
+### Mode Selection
+
+- **Superpowers Mode:** brainstorm → plan → TDD → execute (subagent-driven) → /validate (QA + security + visual + review) → ship → evolve
+- **Standard Mode:** plan → implement → validate → ship
+
+### Verification Standard
+
+Both modes MUST run `/validate` before `/ship`. The superpowers `verification-before-completion` skill is NOT a substitute for `/validate`. The superpowers `requesting-code-review` skill is NOT a substitute for `/validate` Phase 5.
+
+### Code Review Layers
+
+| Layer | Command | What it checks |
+|-------|---------|----------------|
+| Superpowers Code Review | `/validate` Phase 5 | Implementation defects, plan adherence, security, edge cases |
+| Codex Adversarial Review | `/ship` Step 1.6 | Design choices, tradeoffs, assumptions, alternatives (optional) |
 
 ---
 
@@ -197,11 +247,49 @@ All secrets and configuration load from environment variables via Pydantic Setti
 
 ---
 
+## Knowledge Base
+
+Path: .obsidian/
+
+Unified LLM knowledge base inspired by [Karpathy's LLM Knowledge Bases](https://x.com/karpathy) workflow. Raw sources + compiled wiki articles live together as a flat Obsidian-compatible vault.
+
+**Structure:**
+
+```
+.obsidian/
+├── raw/                 # Ingested source material (read-only)
+│   └── _manifest.md     # Index of all raw sources with status
+├── wiki/                # Unified wiki — flat .md files with frontmatter
+│   ├── _index.md        # Master index grouped by type
+│   └── _tags.md         # Tag registry with article counts
+└── _search/
+    ├── index.json       # TF-IDF search index (auto-generated)
+    └── stats.md         # KB health metrics
+```
+
+**KB Commands:**
+
+- `/kb ingest <source>` — ingest URL, file, repo, or session learnings → raw/ + wiki stub
+- `/kb compile` — expand stubs, cross-link, extract concepts, health check
+- `/kb search <query>` — TF-IDF search across wiki
+- `/kb ask <question>` — Q&A against wiki, answer filed back as new article
+
+**Pipeline integration:**
+
+- `/prime` reads wiki index + auto-searches for task-relevant articles
+- `/execute` searches wiki before each task for relevant context
+- `/ship` updates feature articles with implementation details, creates decision articles
+- `/evolve` captures session learnings as raw + stub wiki articles
+
+Rebuild indexes after manual edits: `KB_PATH=.obsidian node cli/kb-search.js index`
+
+---
+
 ## Skills & Plugins
 
 50+ specialized skills, 2 subagents (`architect-agent`, `tester-agent`), and MCP servers (context7, shadcn). Full trigger table in `~/.claude/CLAUDE.md`.
 
-**Technology-specific skills installed:**
+**Technology-specific skills used in this project:**
 - `/fastapi-python` — FastAPI patterns, async endpoints, dependency injection
 - `/mongodb` — MongoDB queries, aggregation pipelines, indexes
 - `/mongodb-development` — MongoDB development best practices
@@ -216,12 +304,13 @@ All secrets and configuration load from environment variables via Pydantic Setti
 - Web UI → `tester-agent` (not `/agent-browser`)
 
 **Domain-specific skill recipes load automatically from `.claude/rules/`:**
-- `backend.md` — Python/FastAPI skills, MongoDB, Pydantic AI (loads for `apps/api/**`)
-- `frontend.md` — Design skill gate, shadcn MCP, Next.js recipe (loads for `apps/web/**`)
+- `backend.md` — FastAPI/Pydantic/MongoDB/Pydantic AI/Stripe (loads for `apps/api/**`)
+- `frontend.md` — Design skill gate, shadcn MCP, Next.js (loads for `apps/web/**`)
+- `database.md`, `security.md`, `testing.md`, `mobile.md`, `knowledge-base.md` — load by file path / topic
 
 ### Development Mode Selection — ASK EVERY TIME
 
-**MANDATORY:** For non-trivial tasks, ask before starting:
+For non-trivial tasks, ask before starting:
 
 > 1. **Superpowers Mode** — Full discipline (brainstorming, TDD, plans, verification, code review)
 > 2. **Standard Mode** — Domain skills only, faster iteration
@@ -241,3 +330,24 @@ Skip for trivial changes. Reuse previous choice this session.
 `/brainstorming` → `/writing-plans` → `/test-driven-development` → domain skills → `/executing-plans` → `/verification-before-completion` → `/finishing-a-development-branch`
 
 Parallel: `/dispatching-parallel-agents` or `/subagent-driven-development`. Debug: `/systematic-debugging`.
+
+---
+
+## QA Tools
+
+Default QA test tools by domain. Override per-project by editing this section.
+
+| Domain | Tool |
+|--------|------|
+| Web E2E | Playwright (via `tester-agent`) |
+| API E2E | pytest + httpx (`uv run pytest -m integration`) |
+
+## Output Compaction
+
+State: off
+
+Controls the `.claude/hooks/output-compact.sh` Stop hook. Defaults to OFF — flip to `on` to enable. Read the rules in `.claude/references/output-compaction.md` first. Override per-session with `CLAUDE_OUTPUT_COMPACT=on|off`.
+
+## External Dependencies
+
+Run `/setup` to check what's installed. See `docs/plugin-install-guide.md` for full list.
