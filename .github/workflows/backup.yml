@@ -1,0 +1,125 @@
+name: Database Backup
+
+# Scheduled and manual database backups for MongoDB and Postgres.
+#
+# Security note: this workflow only consumes `secrets.*` and a constrained
+# `inputs.target` choice. It never interpolates `github.event.*` strings
+# (issue/PR/commit author content) into shell, so command-injection vectors
+# from user-controlled input are not applicable here.
+#
+# Secrets required (configure under Repo Settings > Secrets and variables):
+#   - MONGODB_BACKUP_URI       (read-only or backup user)
+#   - POSTGRES_BACKUP_URL      (read-only role)
+# Optional (enables S3 upload):
+#   - BACKUP_S3_BUCKET
+#   - BACKUP_S3_ENDPOINT_URL   (set for non-AWS S3-compatible providers)
+#   - AWS_ACCESS_KEY_ID
+#   - AWS_SECRET_ACCESS_KEY
+#   - AWS_REGION
+#
+# When S3 secrets are absent the workflow uploads encrypted GitHub artifacts
+# only. Artifacts are retained for 14 days; long-term retention requires S3.
+
+on:
+  schedule:
+    # Daily at 03:17 UTC (off-peak, avoids hour-aligned thundering herd).
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which database(s) to back up"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - mongo
+          - postgres
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mongo-backup:
+    if: ${{ github.event_name == 'schedule' || inputs.target == 'all' || inputs.target == 'mongo' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MongoDB Database Tools
+        run: |
+          set -euo pipefail
+          wget -qO- https://www.mongodb.org/static/pgp/server-7.0.asc \
+            | sudo gpg --dearmor -o /usr/share/keyrings/mongodb.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mongodb.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" \
+            | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+          sudo apt-get update -y
+          sudo apt-get install -y mongodb-database-tools
+
+      - name: Run mongo backup
+        env:
+          MONGODB_URI: ${{ secrets.MONGODB_BACKUP_URI }}
+          BACKUP_DIR: ${{ github.workspace }}/.backups/mongo
+          S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET && format('{0}/mongo', secrets.BACKUP_S3_BUCKET) || '' }}
+          S3_ENDPOINT_URL: ${{ secrets.BACKUP_S3_ENDPOINT_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          RETENTION_DAYS: "30"
+        run: |
+          if [[ -z "${MONGODB_URI}" ]]; then
+            echo "MONGODB_BACKUP_URI secret not configured; skipping." >&2
+            exit 0
+          fi
+          ./scripts/backup/mongo_backup.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mongo-backup-${{ github.run_id }}
+          path: .backups/mongo/*.archive.gz
+          retention-days: 14
+          if-no-files-found: warn
+
+  postgres-backup:
+    if: ${{ github.event_name == 'schedule' || inputs.target == 'all' || inputs.target == 'postgres' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install postgresql-client
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client
+
+      - name: Run postgres backup
+        env:
+          DATABASE_URL: ${{ secrets.POSTGRES_BACKUP_URL }}
+          BACKUP_DIR: ${{ github.workspace }}/.backups/postgres
+          S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET && format('{0}/postgres', secrets.BACKUP_S3_BUCKET) || '' }}
+          S3_ENDPOINT_URL: ${{ secrets.BACKUP_S3_ENDPOINT_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          RETENTION_DAYS: "30"
+        run: |
+          if [[ -z "${DATABASE_URL}" ]]; then
+            echo "POSTGRES_BACKUP_URL secret not configured; skipping." >&2
+            exit 0
+          fi
+          ./scripts/backup/postgres_backup.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: postgres-backup-${{ github.run_id }}
+          path: .backups/postgres/*.dump
+          retention-days: 14
+          if-no-files-found: warn
