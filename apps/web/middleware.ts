@@ -11,12 +11,19 @@ const authRoutes = ["/login", "/signup", "/forgot-password", "/reset-password"];
 // Marketing routes are public and never trigger auth redirects.
 const marketingRoutes = ["/", "/pricing"];
 
+// Public path prefixes — accessible without auth, no auto-redirect either way.
+const publicRoutePrefixes = ["/invite/"];
+
 function isMarketingPath(pathname: string): boolean {
   if (marketingRoutes.includes(pathname)) return true;
   // Allow generated SEO files served from app/ (sitemap.ts, robots.ts, opengraph-image.tsx).
   if (pathname === "/sitemap.xml" || pathname === "/robots.txt") return true;
   if (pathname.startsWith("/opengraph-image")) return true;
   return false;
+}
+
+function isPublicPrefix(pathname: string): boolean {
+  return publicRoutePrefixes.some((p) => pathname.startsWith(p));
 }
 
 function withRequestId(response: NextResponse, requestId: string): NextResponse {
@@ -45,7 +52,8 @@ export default auth((req) => {
     return withRequestId(NextResponse.next(), requestId);
   }
 
-  // Redirect authenticated users away from auth pages
+  // Redirect authenticated users away from auth pages, but NOT from
+  // public-prefix paths like /invite/* (signed-in users may still need to accept).
   if (isAuthenticated && authRoutes.includes(pathname)) {
     return withRequestId(
       NextResponse.redirect(new URL("/dashboard", req.url)),
@@ -53,8 +61,12 @@ export default auth((req) => {
     );
   }
 
-  // Redirect unauthenticated users to login
-  if (!isAuthenticated && !authRoutes.includes(pathname)) {
+  // Redirect unauthenticated users to login, except for public paths.
+  if (
+    !isAuthenticated &&
+    !authRoutes.includes(pathname) &&
+    !isPublicPrefix(pathname)
+  ) {
     return withRequestId(
       NextResponse.redirect(new URL("/login", req.url)),
       requestId,

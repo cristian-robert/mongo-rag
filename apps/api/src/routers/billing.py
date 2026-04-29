@@ -9,9 +9,9 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from src.core.authz import Principal, require_role
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
-from src.core.tenant import get_tenant_id_from_jwt
 from src.models.billing import (
     DISPLAY_PRICES_CENTS,
     MODEL_CATALOG,
@@ -27,6 +27,7 @@ from src.models.billing import (
     PlansResponse,
 )
 from src.models.tenant import PlanTier
+from src.models.user import UserRole
 from src.services.billing import BillingError, BillingService
 
 logger = logging.getLogger(__name__)
@@ -151,13 +152,14 @@ async def list_plans() -> PlansResponse:
 @router.post("/checkout", response_model=CheckoutResponse)
 async def create_checkout(
     body: CheckoutRequest,
-    tenant_id: str = Depends(get_tenant_id_from_jwt),
+    principal: Principal = Depends(require_role(UserRole.OWNER)),
     service: BillingService = Depends(_get_billing_service),
 ) -> CheckoutResponse:
     """Create a Stripe Checkout session for an upgrade.
 
-    JWT-only (not API keys) — billing is a dashboard-session-only operation.
+    Owner-only — billing is a tenant-financial concern.
     """
+    tenant_id = principal.tenant_id
     if body.plan in NON_CHECKOUT_PLANS:
         raise HTTPException(
             status_code=400,

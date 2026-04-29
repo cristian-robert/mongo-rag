@@ -8,11 +8,29 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class UserRole(str, Enum):
-    """User roles within a tenant."""
+    """User roles within a tenant.
+
+    Hierarchy (highest to lowest): owner > admin > member > viewer.
+    Use ``ROLE_RANK`` to compare and ``has_min_role`` to gate authorization.
+    """
 
     OWNER = "owner"
     ADMIN = "admin"
     MEMBER = "member"
+    VIEWER = "viewer"
+
+
+ROLE_RANK: dict[str, int] = {
+    UserRole.VIEWER.value: 0,
+    UserRole.MEMBER.value: 1,
+    UserRole.ADMIN.value: 2,
+    UserRole.OWNER.value: 3,
+}
+
+
+def has_min_role(role: str, minimum: UserRole) -> bool:
+    """Return True if ``role`` is at least as privileged as ``minimum``."""
+    return ROLE_RANK.get(role, -1) >= ROLE_RANK[minimum.value]
 
 
 class UserModel(BaseModel):

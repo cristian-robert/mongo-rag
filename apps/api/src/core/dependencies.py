@@ -133,6 +133,10 @@ class AgentDependencies:
     def bots_collection(self) -> AsyncCollection:
         return self._get_collection(self.settings.mongodb_collection_bots)
 
+    @property
+    def invitations_collection(self) -> AsyncCollection:
+        return self._get_collection(self.settings.mongodb_collection_invitations)
+
     # -- Core methods --
 
     async def cleanup(self) -> None:

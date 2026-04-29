@@ -10,6 +10,7 @@ import {
   KeyRound,
   LayoutDashboard,
   Settings,
+  Users,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -26,6 +27,7 @@ const NAV_ITEMS: readonly NavItem[] = [
   { href: "/dashboard/documents", label: "Documents", icon: FileText },
   { href: "/dashboard/api-keys", label: "API Keys", icon: KeyRound },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/team", label: "Team", icon: Users },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ] as const;

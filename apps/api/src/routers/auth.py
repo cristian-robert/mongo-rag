@@ -6,6 +6,7 @@ import logging
 import resend
 from fastapi import APIRouter, Depends, HTTPException
 
+from src.core.authz import Principal, get_principal
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
 from src.core.rate_limit_dep import enforce_auth_ip_rate_limit
@@ -15,6 +16,7 @@ from src.models.api import (
     ForgotPasswordRequest,
     LoginRequest,
     LoginResponse,
+    MeResponse,
     MessageResponse,
     ResetPasswordRequest,
     SignupRequest,
@@ -147,6 +149,36 @@ async def reset_password(
         raise HTTPException(status_code=400, detail=str(e))
 
     return MessageResponse(message="Password has been reset successfully.")
+
+
+@router.get("/me", response_model=MeResponse)
+async def get_me(
+    principal: Principal = Depends(get_principal),
+    deps: AgentDependencies = Depends(get_deps),
+):
+    """Return the current user — used by the dashboard for role-gated UI."""
+    from bson import ObjectId
+    from bson.errors import InvalidId
+
+    try:
+        oid = ObjectId(principal.user_id)
+    except (InvalidId, TypeError):
+        raise HTTPException(status_code=401, detail="Unknown user")
+
+    user = await deps.users_collection.find_one(
+        {"_id": oid, "tenant_id": principal.tenant_id}
+    )
+    if not user:
+        raise HTTPException(status_code=401, detail="Unknown user")
+
+    # Always trust the DB role over the JWT role to defeat stale tokens.
+    return MeResponse(
+        user_id=principal.user_id,
+        tenant_id=principal.tenant_id,
+        email=user["email"],
+        name=user.get("name", ""),
+        role=user.get("role", "viewer"),
+    )
 
 
 @router.post("/ws-ticket", response_model=WSTicketResponse)

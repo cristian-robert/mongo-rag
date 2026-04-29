@@ -8,9 +8,9 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from src.core.authz import Principal, require_role
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
-from src.core.tenant import get_tenant_id_from_jwt
 from src.models.api import MessageResponse
 from src.models.bot import (
     BotListResponse,
@@ -19,6 +19,7 @@ from src.models.bot import (
     PublicBotResponse,
     UpdateBotRequest,
 )
+from src.models.user import UserRole
 from src.services.bot import BotService, BotSlugTakenError
 
 logger = logging.getLogger(__name__)
@@ -37,10 +38,11 @@ def _get_bot_service(deps: AgentDependencies = Depends(get_deps)) -> BotService:
 @router.post("", response_model=BotResponse, status_code=201)
 async def create_bot(
     body: CreateBotRequest,
-    tenant_id: str = Depends(get_tenant_id_from_jwt),
+    principal: Principal = Depends(require_role(UserRole.ADMIN)),
     service: BotService = Depends(_get_bot_service),
 ):
     """Create a new bot. Slug must be unique per tenant."""
+    tenant_id = principal.tenant_id
     count = await service.count_for_tenant(tenant_id)
     if count >= MAX_BOTS_PER_TENANT:
         raise HTTPException(
@@ -56,22 +58,22 @@ async def create_bot(
 
 @router.get("", response_model=BotListResponse)
 async def list_bots(
-    tenant_id: str = Depends(get_tenant_id_from_jwt),
+    principal: Principal = Depends(require_role(UserRole.VIEWER)),
     service: BotService = Depends(_get_bot_service),
 ):
     """List all bots for the authenticated tenant."""
-    bots = await service.list_for_tenant(tenant_id)
+    bots = await service.list_for_tenant(principal.tenant_id)
     return BotListResponse(bots=[BotResponse(**b) for b in bots])
 
 
 @router.get("/{bot_id}", response_model=BotResponse)
 async def get_bot(
     bot_id: str,
-    tenant_id: str = Depends(get_tenant_id_from_jwt),
+    principal: Principal = Depends(require_role(UserRole.VIEWER)),
     service: BotService = Depends(_get_bot_service),
 ):
     """Fetch a single bot. 404 for cross-tenant ids."""
-    bot = await service.get(bot_id=bot_id, tenant_id=tenant_id)
+    bot = await service.get(bot_id=bot_id, tenant_id=principal.tenant_id)
     if bot is None:
         raise HTTPException(status_code=404, detail="Bot not found")
     return BotResponse(**bot)
@@ -81,11 +83,11 @@ async def get_bot(
 async def update_bot(
     bot_id: str,
     body: UpdateBotRequest,
-    tenant_id: str = Depends(get_tenant_id_from_jwt),
+    principal: Principal = Depends(require_role(UserRole.ADMIN)),
     service: BotService = Depends(_get_bot_service),
 ):
     """Partially update a bot. Slug is immutable."""
-    bot = await service.update(bot_id=bot_id, tenant_id=tenant_id, body=body)
+    bot = await service.update(bot_id=bot_id, tenant_id=principal.tenant_id, body=body)
     if bot is None:
         raise HTTPException(status_code=404, detail="Bot not found")
     return BotResponse(**bot)
@@ -94,11 +96,11 @@ async def update_bot(
 @router.delete("/{bot_id}", response_model=MessageResponse)
 async def delete_bot(
     bot_id: str,
-    tenant_id: str = Depends(get_tenant_id_from_jwt),
+    principal: Principal = Depends(require_role(UserRole.ADMIN)),
     service: BotService = Depends(_get_bot_service),
 ):
     """Permanently delete a bot."""
-    deleted = await service.delete(bot_id=bot_id, tenant_id=tenant_id)
+    deleted = await service.delete(bot_id=bot_id, tenant_id=principal.tenant_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Bot not found")
     return MessageResponse(message="Bot deleted")

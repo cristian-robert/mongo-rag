@@ -81,6 +81,16 @@ class Settings(BaseSettings):
         description="Collection for tenant-scoped bot configurations",
     )
 
+    mongodb_collection_invitations: str = Field(
+        default="invitations",
+        description="Collection for pending tenant team invitations",
+    )
+
+    invitation_ttl_hours: int = Field(
+        default=168,  # 7 days
+        description="How long an invitation remains valid",
+    )
+
     # LLM Configuration (OpenAI-compatible)
     llm_provider: str = Field(
         default="openrouter",
