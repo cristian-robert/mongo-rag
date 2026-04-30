@@ -7,8 +7,11 @@ sources:
   - "git log: e439ab8 Enforce tenant isolation across all API endpoints (#39)"
 related:
   - "[[multi-tenancy-tenant-isolation]]"
+  - "[[concept-principal-tenant-isolation]]"
+  - "[[decision-supabase-auth-over-nextauth]]"
+  - "[[decision-postgres-mongo-storage-split]]"
 created: 2026-04-29
-updated: 2026-04-29
+updated: 2026-04-30
 status: active
 ---
 

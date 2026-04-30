@@ -5,9 +5,11 @@ tags: [feature, billing]
 sources:
   - "git log: f1022e2 docs: add Stripe billing implementation plan (#10)"
   - "git log: 7547be1 docs: add Stripe billing integration design spec (#10)"
-related: []
+related:
+  - "[[concept-stripe-webhook-idempotency]]"
+  - "[[decision-postgres-mongo-storage-split]]"
 created: 2026-04-29
-updated: 2026-04-29
+updated: 2026-04-30
 status: draft
 ---
 

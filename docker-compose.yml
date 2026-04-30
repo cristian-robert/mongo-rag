@@ -17,8 +17,11 @@ services:
       # Override MONGODB_URI to point at the local mongo service when
       # apps/api/.env doesn't already set one.
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/mongorag}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     depends_on:
       mongo:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/health',timeout=5).status==200 else 1)"]
@@ -26,6 +29,36 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    image: mongorag-api:dev
+    command: ["celery", "-A", "src.worker", "worker", "--loglevel=info", "--concurrency=2"]
+    env_file:
+      - path: ./apps/api/.env
+        required: false
+    environment:
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/mongorag}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
 
   web:
@@ -86,3 +119,4 @@ services:
 volumes:
   mongo-data:
   mongo-config:
+  redis-data:

@@ -49,7 +49,9 @@ paths:
 - Tests with `pytest` + `pytest-asyncio`
 - Structured logging with context (no print statements)
 - Business logic in services, not routes
-- **TENANT ISOLATION** — every MongoDB query includes `tenant_id` (most critical security boundary)
+- **TENANT ISOLATION** — every Mongo and Postgres query sources `tenant_id` from a verified `Principal` via `tenant_filter` / `tenant_doc` (`apps/api/src/core/principal.py`). Never accept `tenant_id` from request input. See `[[concept-principal-tenant-isolation]]`.
+- **Stripe webhook handler** is the only mutator of `subscriptions` state; it idempotency-guards with the `stripe_events` Postgres table (see `[[concept-stripe-webhook-idempotency]]`)
+- **Tenant-supplied URLs** (ingestion, outbound webhooks) require resolved-IP allowlisting — see `[[concept-ssrf-defense-url-ingestion]]`
 
 ## Security (full list in `.claude/references/security-checklist.md`)
 
@@ -79,3 +81,5 @@ Load only when the rule triggers:
 - `.claude/references/backend-detail.md` — error formats, DI/layering, logging, testing-by-layer
 - `.claude/references/security-checklist.md` — load for any auth, API, or infra change
 - `.obsidian/wiki/_index.md` — search for feature articles when touching endpoints
+- `.obsidian/wiki/decision-postgres-mongo-storage-split.md` — load before adding a table or collection
+- `.obsidian/wiki/concept-principal-tenant-isolation.md` — load before any tenant-scoped query or new endpoint

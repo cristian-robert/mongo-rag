@@ -1,17 +1,34 @@
 # Tag Registry
 
-_Last updated: 2026-04-29_
+_Last updated: 2026-04-30_
 
 | Tag | Count | Articles |
 |-----|-------|----------|
-| rag | 3 | [[feature-rag-agent]], [[feature-document-ingestion]], [[hybrid-rrf-search]] |
-| search | 2 | [[hybrid-rrf-search]], [[feature-rag-agent]] |
-| mongodb | 4 | [[hybrid-rrf-search]], [[feature-document-ingestion]], [[multi-tenancy-tenant-isolation]], [[feature-api-key-management]] |
-| security | 2 | [[multi-tenancy-tenant-isolation]], [[feature-api-key-management]] |
-| feature | 4 | [[feature-rag-agent]], [[feature-document-ingestion]], [[feature-api-key-management]], [[feature-stripe-billing]] |
-| decision | 1 | [[decision-pydantic-ai-over-langchain]] |
+| feature | 12 | [[feature-rag-agent]], [[feature-document-ingestion]], [[feature-rag-pipeline-enhancements]], [[feature-rag-eval-harness]], [[feature-api-key-management]], [[feature-stripe-billing]], [[feature-usage-metering-rate-limiting]], [[feature-embeddable-widget]], [[feature-outbound-webhooks]], [[feature-team-management-rbac]], [[feature-bot-configuration]], [[feature-analytics-dashboard]] |
+| concept | 8 | [[hybrid-rrf-search]], [[multi-tenancy-tenant-isolation]], [[concept-principal-tenant-isolation]], [[concept-stripe-webhook-idempotency]], [[concept-ssrf-defense-url-ingestion]], [[concept-celery-ingestion-worker]], [[concept-rate-limiting-fixed-window]], [[concept-observability-stack]] |
+| decision | 3 | [[decision-pydantic-ai-over-langchain]], [[decision-postgres-mongo-storage-split]], [[decision-supabase-auth-over-nextauth]] |
+| security | 6 | [[multi-tenancy-tenant-isolation]], [[feature-api-key-management]], [[concept-principal-tenant-isolation]], [[concept-ssrf-defense-url-ingestion]], [[concept-stripe-webhook-idempotency]], [[feature-outbound-webhooks]] |
+| rag | 5 | [[feature-rag-agent]], [[feature-document-ingestion]], [[feature-rag-pipeline-enhancements]], [[feature-rag-eval-harness]], [[hybrid-rrf-search]] |
+| multi-tenancy | 3 | [[multi-tenancy-tenant-isolation]], [[concept-principal-tenant-isolation]], [[decision-postgres-mongo-storage-split]] |
+| auth | 4 | [[feature-api-key-management]], [[decision-supabase-auth-over-nextauth]], [[concept-principal-tenant-isolation]], [[feature-team-management-rbac]] |
+| postgres | 4 | [[decision-postgres-mongo-storage-split]], [[concept-stripe-webhook-idempotency]], [[feature-usage-metering-rate-limiting]], [[feature-team-management-rbac]] |
+| mongodb | 6 | [[hybrid-rrf-search]], [[feature-document-ingestion]], [[multi-tenancy-tenant-isolation]], [[feature-api-key-management]], [[decision-postgres-mongo-storage-split]], [[feature-bot-configuration]] |
+| supabase | 2 | [[decision-postgres-mongo-storage-split]], [[decision-supabase-auth-over-nextauth]] |
+| ingestion | 3 | [[feature-document-ingestion]], [[concept-ssrf-defense-url-ingestion]], [[concept-celery-ingestion-worker]] |
+| billing | 3 | [[feature-stripe-billing]], [[concept-stripe-webhook-idempotency]], [[feature-usage-metering-rate-limiting]] |
+| stripe | 2 | [[feature-stripe-billing]], [[concept-stripe-webhook-idempotency]] |
+| webhooks | 2 | [[concept-stripe-webhook-idempotency]], [[feature-outbound-webhooks]] |
+| celery | 1 | [[concept-celery-ingestion-worker]] |
+| redis | 2 | [[concept-celery-ingestion-worker]], [[concept-rate-limiting-fixed-window]] |
+| ssrf | 2 | [[concept-ssrf-defense-url-ingestion]], [[feature-outbound-webhooks]] |
+| widget | 2 | [[feature-embeddable-widget]], [[feature-bot-configuration]] |
+| rate-limiting | 2 | [[concept-rate-limiting-fixed-window]], [[feature-usage-metering-rate-limiting]] |
+| observability | 2 | [[concept-observability-stack]], [[feature-analytics-dashboard]] |
 | pydantic-ai | 2 | [[feature-rag-agent]], [[decision-pydantic-ai-over-langchain]] |
-| ingestion | 1 | [[feature-document-ingestion]] |
-| billing | 1 | [[feature-stripe-billing]] |
-| auth | 1 | [[feature-api-key-management]] |
-| multi-tenancy | 1 | [[multi-tenancy-tenant-isolation]] |
+| evaluation | 1 | [[feature-rag-eval-harness]] |
+| analytics | 1 | [[feature-analytics-dashboard]] |
+| team | 1 | [[feature-team-management-rbac]] |
+| bots | 1 | [[feature-bot-configuration]] |
+| nextjs | 1 | [[decision-supabase-auth-over-nextauth]] |
+| fastapi | 3 | [[decision-supabase-auth-over-nextauth]], [[concept-rate-limiting-fixed-window]], [[concept-observability-stack]] |
+| sentry | 1 | [[concept-observability-stack]] |

@@ -6,6 +6,12 @@ import { Providers } from "@/components/providers";
 
 import "./globals.css";
 
+// Nonce-based CSP requires dynamic rendering — Next.js applies nonces during
+// SSR based on the per-request CSP header set in middleware.ts. Static
+// pre-rendering would emit `<script>` tags without nonces and the browser
+// would block hydration.
+export const dynamic = "force-dynamic";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],

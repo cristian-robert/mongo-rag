@@ -18,6 +18,8 @@ globs: ["**/auth/**", "**/authentication/**", "**/login*", "**/register*", "**/s
 - Passwords hashed with bcrypt (≥12 rounds) or argon2 — never plaintext
 - Tokens in httpOnly cookies — never localStorage
 - Every route verifies authentication; every object access verifies authorization
+- `tenant_id` is sourced ONLY from a verified `Principal` — never from request input (see `[[concept-principal-tenant-isolation]]`)
+- Tenant-supplied URLs (ingestion, webhook targets) require resolved-IP allowlisting — see `[[concept-ssrf-defense-url-ingestion]]`
 - Inputs validated with schema validation (Zod, Joi, etc.); no SQL string concatenation
 - Secrets in env vars only — never committed, never in source
 - Error messages never reveal stack traces, file paths, or system internals
@@ -39,3 +41,6 @@ Load only when the rule triggers:
 - `.claude/references/security-checklist.md` — load for the authoritative pre-ship checklist (auth, API, code, infra)
 - `.claude/references/backend-detail.md` — load for auth/authz implementation detail and logging rules
 - `<kb-path>/wiki/_index.md` — search for existing auth/session/security decision articles before changing behavior
+- `<kb-path>/wiki/concept-principal-tenant-isolation.md` — load before any change that reads or writes `tenant_id`, or touches an endpoint
+- `<kb-path>/wiki/concept-stripe-webhook-idempotency.md` — load before any change to Stripe webhook handling or `subscriptions` mutations
+- `<kb-path>/wiki/concept-ssrf-defense-url-ingestion.md` — load before any feature that fetches a tenant-supplied URL (ingestion, outbound webhooks)

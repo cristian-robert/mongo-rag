@@ -1,6 +1,99 @@
 {
-  "generated": "2026-04-29T22:52:02.587Z",
+  "generated": "2026-04-30T08:00:07.680Z",
   "docs": [
+    {
+      "file": "concept-celery-ingestion-worker.md",
+      "title": "\"Celery + Redis ingestion worker\"",
+      "type": "concept",
+      "tags": [
+        "concept",
+        "ingestion",
+        "celery",
+        "redis",
+        "async",
+        "worker"
+      ],
+      "summary": "Document and URL ingestion run as Celery tasks against a Redis broker, not as inline FastAPI background tasks."
+    },
+    {
+      "file": "concept-observability-stack.md",
+      "title": "\"Observability stack: structured JSON logs, Sentry, request IDs\"",
+      "type": "concept",
+      "tags": [
+        "concept",
+        "observability",
+        "logging",
+        "sentry",
+        "fastapi"
+      ],
+      "summary": "Stdlib `logging` with a custom JSON formatter (NOT structlog), context vars carrying `request_id / tenant_id / user_id` into every log line, automatic redact..."
+    },
+    {
+      "file": "concept-principal-tenant-isolation.md",
+      "title": "\"Principal-based tenant isolation\"",
+      "type": "concept",
+      "tags": [
+        "concept",
+        "security",
+        "multi-tenancy",
+        "auth",
+        "principal"
+      ],
+      "summary": "`Principal` is the immutable view of \"who is making this request\" derived from a verified JWT or API key."
+    },
+    {
+      "file": "concept-rate-limiting-fixed-window.md",
+      "title": "\"Fixed-window rate limiting\"",
+      "type": "concept",
+      "tags": [
+        "concept",
+        "rate-limiting",
+        "redis",
+        "fastapi"
+      ],
+      "summary": "Rate limiting uses a **fixed-window** counter (not token-bucket), implemented as a Protocol with two backends: in-memory (single-replica dev) and Redis (mult..."
+    },
+    {
+      "file": "concept-ssrf-defense-url-ingestion.md",
+      "title": "\"SSRF defense for tenant-supplied URLs\"",
+      "type": "concept",
+      "tags": [
+        "concept",
+        "security",
+        "ssrf",
+        "ingestion",
+        "webhooks"
+      ],
+      "summary": "Tenants can hand us a URL we then fetch (URL ingestion of documents; outbound webhook delivery to a customer-supplied callback)."
+    },
+    {
+      "file": "concept-stripe-webhook-idempotency.md",
+      "title": "\"Stripe webhook idempotency via Postgres\"",
+      "type": "concept",
+      "tags": [
+        "concept",
+        "billing",
+        "stripe",
+        "webhooks",
+        "idempotency",
+        "postgres"
+      ],
+      "summary": "Stripe delivers webhook events at-least-once."
+    },
+    {
+      "file": "decision-postgres-mongo-storage-split.md",
+      "title": "\"Decision: Postgres + MongoDB storage split (mid-migration state)\"",
+      "type": "decision",
+      "tags": [
+        "decision",
+        "architecture",
+        "database",
+        "supabase",
+        "mongodb",
+        "multi-tenancy"
+      ],
+      "summary": "The data model is split between Supabase Postgres and MongoDB Atlas, but the split is **partial and mid-migration**, not clean."
+    },
     {
       "file": "decision-pydantic-ai-over-langchain.md",
       "title": "\"Decision: Pydantic AI over LangChain\"",
@@ -10,6 +103,32 @@
         "pydantic-ai"
       ],
       "summary": "We chose Pydantic AI for the RAG agent instead of LangChain because it fits FastAPI naturally, has a far smaller surface area, and treats type safety as a fi..."
+    },
+    {
+      "file": "decision-supabase-auth-over-nextauth.md",
+      "title": "\"Decision: Supabase Auth as primary, NextAuth retained as fallback\"",
+      "type": "decision",
+      "tags": [
+        "decision",
+        "auth",
+        "supabase",
+        "nextjs",
+        "fastapi",
+        "jwt"
+      ],
+      "summary": "The dashboard uses Supabase Auth (`@supabase/ssr`, email/password) and the FastAPI backend verifies the resulting JWT against the Supabase JWKS endpoint."
+    },
+    {
+      "file": "feature-analytics-dashboard.md",
+      "title": "\"Feature: Conversation analytics dashboard\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "analytics",
+        "dashboard",
+        "observability"
+      ],
+      "summary": "Per-tenant dashboard surfacing chat metrics: conversations, user queries, no-answer rate, top queries, daily timeseries, and a paginated query log with conve..."
     },
     {
       "file": "feature-api-key-management.md",
@@ -24,6 +143,18 @@
       "summary": "Customers create and revoke API keys for the embeddable widget and programmatic access."
     },
     {
+      "file": "feature-bot-configuration.md",
+      "title": "\"Feature: Multi-tenant bot configuration\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "bots",
+        "config",
+        "widget"
+      ],
+      "summary": "Each tenant can define multiple chatbots, each with its own system prompt, model selection, document filter, and widget styling."
+    },
+    {
       "file": "feature-document-ingestion.md",
       "title": "\"Feature: Document Ingestion\"",
       "type": "feature",
@@ -34,6 +165,31 @@
         "mongodb"
       ],
       "summary": "The pipeline that turns customer-uploaded documents into searchable chunks."
+    },
+    {
+      "file": "feature-embeddable-widget.md",
+      "title": "\"Feature: Embeddable chat widget\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "widget",
+        "embed",
+        "sse",
+        "shadow-dom"
+      ],
+      "summary": "A self-contained JavaScript chat widget that customers embed on their own site with a single `<script>` tag."
+    },
+    {
+      "file": "feature-outbound-webhooks.md",
+      "title": "\"Feature: Outbound webhooks\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "webhooks",
+        "integration",
+        "hmac"
+      ],
+      "summary": "Tenants register HTTPS endpoints to receive event notifications (e.g."
     },
     {
       "file": "feature-rag-agent.md",
@@ -48,6 +204,32 @@
       "summary": "The customer-facing chatbot."
     },
     {
+      "file": "feature-rag-eval-harness.md",
+      "title": "\"Feature: RAG quality evaluation harness\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "rag",
+        "evaluation",
+        "ci",
+        "regression"
+      ],
+      "summary": "The harness runs a JSONL \"golden\" question set through the retrieval pipeline (and optionally the answer generator), reports retrieval and answer-quality met..."
+    },
+    {
+      "file": "feature-rag-pipeline-enhancements.md",
+      "title": "\"Feature: RAG pipeline enhancements (rerank, query rewrite, citations)\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "rag",
+        "rerank",
+        "query-rewriting",
+        "citations"
+      ],
+      "summary": "Three retrieval-quality features were added on top of hybrid RRF search: a pluggable reranker, optional query rewriting, and inline `[n]`-style citations res..."
+    },
+    {
       "file": "feature-stripe-billing.md",
       "title": "\"Feature: Stripe Billing\"",
       "type": "feature",
@@ -56,6 +238,19 @@
         "billing"
       ],
       "summary": "Stripe-powered subscription billing for the MongoRAG SaaS."
+    },
+    {
+      "file": "feature-team-management-rbac.md",
+      "title": "\"Feature: Team management & RBAC\"",
+      "type": "feature",
+      "tags": [
+        "feature",
+        "team",
+        "rbac",
+        "roles",
+        "invitations"
+      ],
+      "summary": "Each tenant has multiple users with one of four roles: `owner / admin / member / viewer`."
     },
     {
       "file": "feature-usage-metering-rate-limiting.md",

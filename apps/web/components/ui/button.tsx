@@ -2,7 +2,7 @@
 
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
-import { Children, cloneElement, isValidElement } from "react"
+import { Children, cloneElement, isValidElement, type ReactElement } from "react"
 
 import { cn } from "@/lib/utils"
 
@@ -63,8 +63,14 @@ function Button({
   const composedClass = cn(buttonVariants({ variant, size, className }))
 
   if (asChild) {
-    const child = Children.only(children)
-    if (!isValidElement<{ className?: string }>(child)) {
+    // React 19 + RSC sometimes sends sentinel/whitespace nodes alongside the
+    // real element across the server→client boundary, which trips
+    // Children.only. Pick the first valid React element instead — this matches
+    // Radix Slot's behavior and keeps the asChild contract intact.
+    const child = Children.toArray(children).find(isValidElement) as
+      | ReactElement<{ className?: string }>
+      | undefined
+    if (!child) {
       return null
     }
     return cloneElement(child, {

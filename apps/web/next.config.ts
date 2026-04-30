@@ -2,95 +2,11 @@ import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === "production";
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8100";
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-/**
- * Build a Content-Security-Policy header.
- *
- * - Dashboard CSP locks `frame-ancestors` to none and constrains scripts to
- *   first-party + Stripe.
- * - In dev we allow `'unsafe-eval'` and `'unsafe-inline'` so React Refresh
- *   and Next.js HMR work; production scripts are tightly constrained.
- * - Inline styles are required by the Geist fonts loader and Tailwind in
- *   some cases — kept until we move to a nonce-based pipeline.
- * - Supabase Auth uses HTTPS REST + WSS Realtime; both origins are added
- *   to `connect-src` whenever NEXT_PUBLIC_SUPABASE_URL is configured.
- */
-function buildCsp(): string {
-  const apiOrigin = (() => {
-    try {
-      return new URL(apiUrl).origin;
-    } catch {
-      return "http://localhost:8100";
-    }
-  })();
-
-  const supabaseOrigin = (() => {
-    if (!supabaseUrl) return null;
-    try {
-      return new URL(supabaseUrl).origin;
-    } catch {
-      return null;
-    }
-  })();
-
-  const supabaseConnectSrc = supabaseOrigin
-    ? [supabaseOrigin, supabaseOrigin.replace(/^https/, "wss")]
-    : [];
-
-  const scriptSrc = isProd
-    ? ["'self'", "https://js.stripe.com", "https://checkout.stripe.com"]
-    : [
-        "'self'",
-        "'unsafe-inline'",
-        "'unsafe-eval'",
-        "https://js.stripe.com",
-        "https://checkout.stripe.com",
-      ];
-
-  const directives: Record<string, string[]> = {
-    "default-src": ["'self'"],
-    "base-uri": ["'self'"],
-    "form-action": ["'self'", "https://checkout.stripe.com"],
-    "frame-ancestors": ["'none'"],
-    "object-src": ["'none'"],
-    "img-src": ["'self'", "data:", "blob:", "https:"],
-    "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
-    "style-src": [
-      "'self'",
-      "'unsafe-inline'",
-      "https://fonts.googleapis.com",
-    ],
-    "script-src": scriptSrc,
-    "connect-src": [
-      "'self'",
-      apiOrigin,
-      "https://api.stripe.com",
-      "https://checkout.stripe.com",
-      ...supabaseConnectSrc,
-      ...(isProd ? [] : ["ws:", "wss:"]),
-    ],
-    "frame-src": [
-      "'self'",
-      "https://js.stripe.com",
-      "https://checkout.stripe.com",
-    ],
-    "worker-src": ["'self'", "blob:"],
-    "manifest-src": ["'self'"],
-  };
-
-  if (isProd) {
-    directives["upgrade-insecure-requests"] = [];
-  }
-
-  return Object.entries(directives)
-    .map(([key, values]) => (values.length ? `${key} ${values.join(" ")}` : key))
-    .join("; ");
-}
-
+// Content-Security-Policy is set per-request in middleware.ts so each
+// response carries a fresh nonce that Next.js stamps onto its inline
+// hydration scripts (`<script>self.__next_f.push(...)</script>`).
+// All other security headers stay static here.
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: buildCsp() },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

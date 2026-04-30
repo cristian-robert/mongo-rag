@@ -33,11 +33,14 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 # ─── Builder ─────────────────────────────────────────────────────
 FROM base AS builder
 WORKDIR /app
-ENV NODE_ENV=development
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # next.config.ts must set `output: "standalone"` (verified).
-ENV NEXT_TELEMETRY_DISABLED=1
+# NODE_ENV=production is required for `next build` — Next.js 16 prerenders
+# /_global-error and /_not-found, and a non-production NODE_ENV trips a
+# `useContext` null in those internal pages (see vercel/next.js#85668).
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1
 RUN pnpm build
 
 # ─── Runner ──────────────────────────────────────────────────────

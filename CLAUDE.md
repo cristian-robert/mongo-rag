@@ -165,7 +165,7 @@ pnpm test                        # Tests
 
 ## Environment Variables
 
-- **Backend** (`apps/api/.env`): `MONGODB_URI`, `LLM_API_KEY`, `EMBEDDING_API_KEY`, `LLM_MODEL`, `EMBEDDING_MODEL`, `STRIPE_SECRET_KEY`
+- **Backend** (`apps/api/.env`): `MONGODB_URI`, `DATABASE_URL` (Supabase Postgres), `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `LLM_API_KEY`, `EMBEDDING_API_KEY`, `LLM_MODEL`, `EMBEDDING_MODEL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - **Frontend** (`apps/web/.env.local`): `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`
 
 ## Code Patterns & Conventions
@@ -187,20 +187,17 @@ pnpm test                        # Tests
 3. Batch embed via OpenAI API
 4. Store in MongoDB: `documents` collection + `chunks` collection
 
-### MongoDB Collections
+### Storage layout — Postgres + MongoDB split
 
-- `documents` — `{title, source, content, content_hash, metadata, tenant_id, created_at}`
-- `chunks` — `{document_id, content, embedding[1536], chunk_index, metadata, token_count, tenant_id, created_at}`
-- `tenants` — `{name, slug, plan, settings}`
-- `users` — `{email, password_hash, role, tenant_id}`
-- `api_keys` — `{key_hash, prefix, name, tenant_id}`
-- `conversations` — `{messages[], tenant_id}`
-- `subscriptions` — `{stripe_customer_id, plan, usage}`
-- **Indexes:** `vector_index` on `chunks.embedding`, `text_index` on `chunks.content`
+Identity / authn / billing live in **Postgres (Supabase)**. RAG content lives in **MongoDB Atlas**. Authoritative wiki: `[[decision-postgres-mongo-storage-split]]`.
+
+- **Postgres:** `tenants`, `users`, `team_members`, `api_keys`, `subscriptions`, `stripe_events` (webhook idempotency)
+- **MongoDB:** `documents`, `chunks` (with `embedding[1536]`), `conversations`, `bots`
+- **Mongo indexes:** `vector_index` on `chunks.embedding`, `text_index` on `chunks.content`
 
 ## Multi-Tenancy
 
-Every database query must include `tenant_id`. Enforced at the query layer, not the database layer. Never trust tenant identity from client input alone — derive from authenticated session or API key.
+Every database query (Mongo and Postgres) sources `tenant_id` from a verified `Principal` via `apps/api/src/core/principal.py` helpers (`tenant_filter`, `tenant_doc`). Client-supplied `tenant_id` is rejected. See `[[concept-principal-tenant-isolation]]`.
 
 ## Configuration
 

@@ -14,6 +14,7 @@ globs: ["**/migrations/**", "**/*.sql", "**/schema*", "**/prisma/**", "**/drizzl
 
 ## Conventions
 
+- **Storage split**: identity/billing/api-keys live in **Postgres (Supabase)**; RAG content (`documents`, `chunks`, `conversations`, `bots`) lives in **MongoDB Atlas**. See `[[decision-postgres-mongo-storage-split]]`.
 - Every migration is reversible (include up AND down)
 - Never modify existing migrations — always create a new one
 - Add indexes for frequently queried columns
@@ -21,6 +22,7 @@ globs: ["**/migrations/**", "**/*.sql", "**/schema*", "**/prisma/**", "**/drizzl
 - RLS policies on all user-facing tables (Supabase)
 - No SQL string concatenation — parameterized queries or ORM only
 - App connects with a limited-permission DB user — never root
+- Tenant-scoped queries (Mongo and Postgres) source `tenant_id` from a `Principal` only — see `[[concept-principal-tenant-isolation]]`
 
 ## Checklist
 
@@ -46,3 +48,4 @@ Load only when the rule triggers:
 - `.claude/secrets/supabase.md` — load for Supabase credentials, project refs, and CLI invocation patterns (gitignored, local-only)
 - `.claude/references/security-checklist.md` — load for DB infrastructure/security checks (encryption at rest, network isolation, backups)
 - `<kb-path>/wiki/_index.md` — search for existing schema/domain articles before DDL changes
+- `<kb-path>/wiki/decision-postgres-mongo-storage-split.md` — load before adding a table or collection so it lands in the correct store

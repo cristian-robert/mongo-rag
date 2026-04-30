@@ -10,8 +10,10 @@ sources:
 related:
   - "[[feature-api-key-management]]"
   - "[[hybrid-rrf-search]]"
+  - "[[concept-principal-tenant-isolation]]"
+  - "[[decision-postgres-mongo-storage-split]]"
 created: 2026-04-29
-updated: 2026-04-29
+updated: 2026-04-30
 status: active
 ---
 
@@ -21,14 +23,18 @@ MongoRAG runs all customers on a shared MongoDB cluster. Tenant isolation is enf
 
 ## Content
 
-### Tenant-scoped collections
+### Tenant-scoped storage
 
-`documents`, `chunks`, `conversations`, `api_keys`, `users`, `subscriptions` — all carry `tenant_id`. Only `tenants` (the registry) does not.
+After the foundation sprint, identity/billing moved to Postgres while RAG content stayed in Mongo (see [[decision-postgres-mongo-storage-split]]). Both stores carry `tenant_id` on every tenant-scoped row/document:
+
+- **Mongo tenant-scoped:** `documents`, `chunks`, `conversations`, `bots`
+- **Postgres tenant-scoped:** `users`, `team_members`, `api_keys`, `subscriptions` (and `stripe_events` is keyed by Stripe event id, not tenant)
+- **Not tenant-scoped:** `tenants` itself (the registry)
 
 ### Where tenant_id comes from
 
-- **Dashboard requests:** authenticated session → `tenant_id` in JWT claims
-- **Widget / programmatic requests:** API key → look up `api_keys` collection by `key_hash` → read `tenant_id` from the matching row
+- **Dashboard requests:** Supabase JWT → `tenant_id` in claims (see [[decision-supabase-auth-over-nextauth]])
+- **Widget / programmatic requests:** API key → look up Postgres `api_keys` row by `key_hash` → read `tenant_id` from the matching row
 
 Never trust a tenant_id sent from the client body or query string. The FastAPI dependencies `get_principal` and `get_tenant_id` in `apps/api/src/core/principal.py` and `apps/api/src/core/tenant.py` are the only trusted sources.
 
@@ -68,5 +74,8 @@ For `$search` and `$vectorSearch` you cannot filter after the fact — you must 
 
 ## See Also
 
+- [[concept-principal-tenant-isolation]] — the chokepoint dataclass + helpers this pattern relies on
+- [[decision-postgres-mongo-storage-split]] — which store each tenant-scoped table lives in
+- [[decision-supabase-auth-over-nextauth]] — JWT side of the Principal
 - [[feature-api-key-management]] — derives tenant_id from API keys
 - [[hybrid-rrf-search]] — pushes tenant_id into both search operators
