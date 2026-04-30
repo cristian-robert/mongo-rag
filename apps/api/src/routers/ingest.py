@@ -3,8 +3,6 @@
 import json
 import logging
 import os
-import pathlib
-import shutil
 import uuid
 from typing import Optional
 
@@ -110,9 +108,19 @@ async def ingest_document_endpoint(
             headers={"Retry-After": "3600", "X-Quota-Limit": str(e.limit)},
         )
 
-    # Sanitize filename to prevent path traversal
-    safe_name = pathlib.Path(file.filename or "unknown").name if file.filename else ""
-    source = safe_name or f"upload-{uuid.uuid4()}{ext}"
+    # Sanitize filename — centralized helper rejects empty + traversal sequences.
+    from src.services.blobstore import (
+        BlobStoreError,
+        get_blob_store,
+        sanitize_filename,
+    )
+
+    raw_name = file.filename or f"upload-{uuid.uuid4()}{ext}"
+    try:
+        safe_name = sanitize_filename(raw_name)
+    except ValueError:
+        safe_name = f"upload-{uuid.uuid4()}{ext}"
+    source = safe_name
 
     meta: dict = {}
     if metadata:
@@ -135,29 +143,20 @@ async def ingest_document_endpoint(
         metadata=meta,
     )
 
-    temp_dir = os.path.join(settings.upload_temp_dir, str(uuid.uuid4()))
-    os.makedirs(temp_dir, exist_ok=True)
-    temp_path = os.path.join(temp_dir, source)
-
-    with open(temp_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-
-    # Verify actual file size (Content-Length may be missing or spoofed)
-    actual_size = os.path.getsize(temp_path)
-    max_bytes = settings.max_upload_size_mb * 1024 * 1024
-    if actual_size > max_bytes:
-        shutil.rmtree(temp_dir, ignore_errors=True)
+    blob_store = get_blob_store()
+    key = f"{tenant_id}/{document_id}/{safe_name}"
+    try:
+        blob_uri = await blob_store.put(key, file.file, file.content_type)
+    except BlobStoreError as e:
         await service.update_status(
-            str(document_id), tenant_id, "failed", error_message="File too large"
+            str(document_id), tenant_id, "failed", error_message="Upload failed"
         )
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large. Maximum size: {settings.max_upload_size_mb}MB",
-        )
+        logger.exception("Blob upload failed for doc=%s: %s", document_id, e)
+        raise HTTPException(status_code=503, detail="Upload failed")
 
     try:
         task = ingest_document.delay(
-            temp_path=temp_path,
+            blob_uri=blob_uri,
             document_id=str(document_id),
             tenant_id=tenant_id,
             title=title or os.path.splitext(source)[0],
@@ -165,8 +164,8 @@ async def ingest_document_endpoint(
             metadata=meta,
         )
     except Exception:
-        # Clean up temp file and mark doc failed if Celery dispatch fails
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        # Clean up blob and mark doc failed if Celery dispatch fails
+        await blob_store.delete(blob_uri)
         await service.update_status(
             str(document_id), tenant_id, "failed", error_message="Task queue unavailable"
         )
@@ -174,10 +173,11 @@ async def ingest_document_endpoint(
         raise HTTPException(status_code=503, detail="Task queue unavailable")
 
     logger.info(
-        "Ingestion dispatched: doc=%s, tenant=%s, task=%s",
+        "Ingestion dispatched: doc=%s, tenant=%s, task=%s, blob_uri=%s",
         document_id,
         tenant_id,
         task.id,
+        blob_uri,
     )
 
     return IngestResponse(

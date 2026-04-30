@@ -20,7 +20,6 @@ def app_client():
     mock_deps.db = MagicMock()
     mock_deps.settings = MagicMock()
     mock_deps.settings.max_upload_size_mb = 50
-    mock_deps.settings.upload_temp_dir = "/tmp/test-uploads"
     mock_deps.documents_collection = MagicMock()
     mock_deps.documents_collection.insert_one = AsyncMock(
         return_value=MagicMock(inserted_id="doc-test-123")
@@ -78,17 +77,19 @@ def test_ingest_unsupported_format(app_client):
 
 
 @pytest.mark.unit
-def test_ingest_valid_file_returns_202(app_client):
-    """Ingest with valid file returns 202 Accepted."""
+def test_ingest_valid_file_returns_202(app_client, tmp_path, monkeypatch):
+    """Ingest with valid file returns 202 Accepted via BlobStore."""
     client, mock_deps = app_client
+
+    monkeypatch.setenv("BLOB_STORE", "fs")
+    monkeypatch.setenv("UPLOAD_TEMP_DIR", str(tmp_path))
+    from src.services.blobstore.factory import reset_blob_store_cache
+
+    reset_blob_store_cache()
 
     with (
         patch("src.routers.ingest.ingest_document") as mock_task,
         patch("src.routers.ingest.IngestionService") as mock_service_cls,
-        patch("os.makedirs"),
-        patch("builtins.open", create=True),
-        patch("shutil.copyfileobj"),
-        patch("os.path.getsize", return_value=1024),
     ):
         mock_task.delay.return_value = MagicMock(id="celery-task-123")
 
@@ -108,6 +109,55 @@ def test_ingest_valid_file_returns_202(app_client):
         assert data["document_id"] == "doc-test-123"
         assert data["status"] == "pending"
         assert "task_id" in data
+        # Verify blob_uri was dispatched instead of temp_path
+        call_kwargs = mock_task.delay.call_args.kwargs
+        assert "blob_uri" in call_kwargs
+        assert call_kwargs["blob_uri"].startswith("file://")
+        assert "temp_path" not in call_kwargs
+
+
+@pytest.mark.unit
+def test_ingest_dispatches_with_blob_uri(app_client, tmp_path, monkeypatch):
+    """Ingest dispatches blob_uri (not temp_path) to Celery after BlobStore.put."""
+    client, mock_deps = app_client
+
+    monkeypatch.setenv("BLOB_STORE", "fs")
+    monkeypatch.setenv("UPLOAD_TEMP_DIR", str(tmp_path))
+    from src.services.blobstore.factory import reset_blob_store_cache
+
+    reset_blob_store_cache()
+
+    captured: dict = {}
+
+    def fake_delay(**kwargs):
+        captured.update(kwargs)
+
+        class T:
+            id = "task-123"
+
+        return T()
+
+    with (
+        patch("src.routers.ingest.ingest_document") as mock_task,
+        patch("src.routers.ingest.IngestionService") as mock_service_cls,
+    ):
+        mock_task.delay.side_effect = fake_delay
+
+        mock_service = MagicMock()
+        mock_service.create_pending_document = AsyncMock(return_value="doc-test-456")
+        mock_service_cls.return_value = mock_service
+
+        response = client.post(
+            "/api/v1/documents/ingest",
+            headers=make_auth_header(),
+            files={"file": ("test.txt", b"hello", "text/plain")},
+        )
+
+    assert response.status_code == 202
+    assert "blob_uri" in captured
+    assert captured["blob_uri"].startswith("file://")
+    assert "/test-tenant-001/" in captured["blob_uri"]
+    assert "temp_path" not in captured
 
 
 @pytest.mark.unit
