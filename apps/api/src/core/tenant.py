@@ -128,12 +128,13 @@ async def _resolve_api_key_mongo(raw_key: str, deps: AgentDependencies) -> str:
 async def get_tenant_id_from_jwt(
     request: Request,
     authorization: Optional[str] = Header(default=None),
-    deps: AgentDependencies = Depends(get_deps),
 ) -> str:
     """Extract tenant_id from JWT only. Rejects API keys.
 
     Used by endpoints that must only be reachable from a dashboard session
-    (e.g., key management), not from a programmatic API key.
+    (e.g., key management), not from a programmatic API key. The JWT path
+    no longer needs ``AgentDependencies`` (post-#75) — Settings load directly
+    and the Postgres pool is read off ``request.app.state``.
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
