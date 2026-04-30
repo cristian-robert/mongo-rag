@@ -75,7 +75,7 @@ async def get_tenant_id(
         tenant_id = await _resolve_api_key(token, request, deps)
     else:
         pool = getattr(request.app.state, "pg_pool", None)
-        tenant_id = await _resolve_jwt(token, deps, pool)
+        tenant_id = await _resolve_jwt(token, pool)
 
     request.state.tenant_id = tenant_id
     set_request_context(tenant_id=tenant_id)
@@ -150,13 +150,13 @@ async def get_tenant_id_from_jwt(
         )
 
     pool = getattr(request.app.state, "pg_pool", None)
-    tenant_id = await _resolve_jwt(token, deps, pool)
+    tenant_id = await _resolve_jwt(token, pool)
     request.state.tenant_id = tenant_id
     set_request_context(tenant_id=tenant_id)
     return tenant_id
 
 
-async def _resolve_jwt(token: str, deps: AgentDependencies, pool: Optional[asyncpg.Pool]) -> str:
+async def _resolve_jwt(token: str, pool: Optional[asyncpg.Pool]) -> str:
     """Validate a JWT (Supabase or legacy NextAuth) and return its tenant_id.
 
     Routing rule: if the token's unverified `iss` matches the configured
@@ -168,7 +168,7 @@ async def _resolve_jwt(token: str, deps: AgentDependencies, pool: Optional[async
     The Supabase path needs ``pool`` to look up the caller's profile in
     Postgres. The NextAuth path is self-contained (settings only).
     """
-    settings = deps.settings if isinstance(deps.settings, Settings) else load_settings()
+    settings = load_settings()
 
     if _looks_like_supabase_token(token, settings):
         try:
