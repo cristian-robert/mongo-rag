@@ -26,13 +26,9 @@ def get_blob_store() -> BlobStore:
         _cached = FilesystemBlobStore(root=settings.upload_temp_dir)
     elif settings.blob_store == "supabase":
         if not settings.supabase_storage_bucket:
-            raise ValueError(
-                "SUPABASE_STORAGE_BUCKET is required when BLOB_STORE='supabase'"
-            )
+            raise ValueError("SUPABASE_STORAGE_BUCKET is required when BLOB_STORE='supabase'")
         if not settings.supabase_url:
-            raise ValueError(
-                "SUPABASE_URL is required when BLOB_STORE='supabase'"
-            )
+            raise ValueError("SUPABASE_URL is required when BLOB_STORE='supabase'")
         # Import lazy — boto3 not needed in fs-only test runs.
         from src.services.blobstore.supabase import SupabaseBlobStore
 

@@ -56,11 +56,17 @@ class BlobStore(Protocol):
         ...
 
     def open(self, uri: str) -> AsyncContextManager[AsyncIterator[bytes]]:
-        """Stream bytes back. Raises BlobNotFoundError on 404, BlobAccessError on transient 5xx/network."""
+        """Stream bytes back.
+
+        Raises BlobNotFoundError on 404, BlobAccessError on transient 5xx/network.
+        """
         ...
 
     async def delete(self, uri: str) -> None:
-        """Idempotent. Logs but never raises on Supabase errors — lifecycle rule is the safety net."""
+        """Idempotent.
+
+        Logs but never raises on Supabase errors — lifecycle rule is the safety net.
+        """
         ...
 
     async def signed_url(self, uri: str, expires_in: int = 3600) -> str:

@@ -78,9 +78,7 @@ class SupabaseBlobStore:
         import asyncio
 
         try:
-            obj = await asyncio.to_thread(
-                self._client.get_object, Bucket=bucket, Key=key
-            )
+            obj = await asyncio.to_thread(self._client.get_object, Bucket=bucket, Key=key)
         except ClientError as e:
             code = e.response.get("Error", {}).get("Code")
             if code in ("NoSuchKey", "404"):
@@ -106,9 +104,7 @@ class SupabaseBlobStore:
 
         try:
             bucket, key = self._parse(uri)
-            await asyncio.to_thread(
-                self._client.delete_object, Bucket=bucket, Key=key
-            )
+            await asyncio.to_thread(self._client.delete_object, Bucket=bucket, Key=key)
         except ClientError as e:
             # Idempotent + non-blocking — log and swallow. Lifecycle rule is the safety net.
             logger.warning("blob_delete_failed", extra={"uri": uri, "error": str(e)})
