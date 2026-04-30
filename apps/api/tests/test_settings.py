@@ -34,3 +34,21 @@ def test_settings_resend_api_key_optional(monkeypatch):
 
     settings = Settings()
     assert settings.resend_api_key is None
+
+
+def test_blob_store_defaults_to_fs(monkeypatch):
+    monkeypatch.delenv("BLOB_STORE", raising=False)
+    from src.core.settings import Settings
+    s = Settings()
+    assert s.blob_store == "fs"
+    assert s.supabase_storage_bucket is None
+    assert s.supabase_s3_region == "us-east-1"
+
+
+def test_blob_store_supabase_requires_bucket(monkeypatch):
+    monkeypatch.setenv("BLOB_STORE", "supabase")
+    monkeypatch.setenv("SUPABASE_STORAGE_BUCKET", "mongorag-uploads")
+    from src.core.settings import Settings
+    s = Settings()
+    assert s.blob_store == "supabase"
+    assert s.supabase_storage_bucket == "mongorag-uploads"

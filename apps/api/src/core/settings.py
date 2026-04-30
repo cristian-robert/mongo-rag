@@ -209,7 +209,24 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = Field(default=50, description="Maximum file upload size in MB")
 
     upload_temp_dir: str = Field(
-        default="/tmp/mongorag-uploads", description="Temporary directory for uploaded files"
+        default="./.tmp/uploads",
+        description="Temporary directory for FilesystemBlobStore (and the uploaded-file staging area).",
+    )
+
+    # Blob storage (ingestion handoff)
+    blob_store: Literal["fs", "supabase"] = Field(
+        default="fs",
+        description="Backend for ingestion blob handoff: 'fs' (local) or 'supabase'.",
+    )
+
+    supabase_storage_bucket: Optional[str] = Field(
+        default=None,
+        description="Supabase Storage bucket name. Required when blob_store='supabase'.",
+    )
+
+    supabase_s3_region: str = Field(
+        default="us-east-1",
+        description="boto3 region label for the Supabase S3-compatible endpoint.",
     )
 
     # URL Ingestion Configuration
