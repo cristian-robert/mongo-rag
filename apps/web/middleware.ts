@@ -84,6 +84,7 @@ function buildCsp(nonce: string): string {
     "connect-src": [
       "'self'",
       apiOrigin,
+      "https://mongorag-api.fly.dev",
       "https://api.stripe.com",
       "https://checkout.stripe.com",
       ...supabaseConnectSrc,

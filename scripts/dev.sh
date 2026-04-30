@@ -11,6 +11,24 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SESSION="mongorag"
 COMPOSE_FILE="$ROOT/docker-compose.dev.yml"
 
+# --- BlobStore wiring ---
+# Default to filesystem mode for local dev. The host API and the dockerized
+# worker share $ROOT/.tmp/uploads (host) ↔ /workspace/.tmp/uploads (container)
+# via the bind-mount declared in docker-compose.dev.yml.
+export BLOB_STORE="${BLOB_STORE:-fs}"
+export UPLOAD_TEMP_DIR="${UPLOAD_TEMP_DIR:-$ROOT/.tmp/uploads}"
+mkdir -p "$UPLOAD_TEMP_DIR"
+
+echo "BLOB_STORE=${BLOB_STORE}"
+
+# Fail fast: supabase mode requires creds. Without this, the API silently
+# falls through to a code path that errors at request time.
+if [[ "${BLOB_STORE}" == "supabase" ]]; then
+  : "${SUPABASE_STORAGE_BUCKET:?SUPABASE_STORAGE_BUCKET required when BLOB_STORE=supabase}"
+  : "${SUPABASE_SECRET_KEY:?SUPABASE_SECRET_KEY required when BLOB_STORE=supabase}"
+  : "${SUPABASE_URL:?SUPABASE_URL required when BLOB_STORE=supabase}"
+fi
+
 # Pre-flight: required tools.
 for bin in tmux docker uv pnpm; do
   if ! command -v "$bin" >/dev/null 2>&1; then
