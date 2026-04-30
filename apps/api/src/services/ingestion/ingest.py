@@ -233,13 +233,12 @@ class DocumentIngestionPipeline:
 
             except Exception as e:
                 logger.error(f"Failed to convert {file_path} with Docling: {e}")
-                # Fall back to raw text if Docling fails
+                # Fall back to raw text if Docling fails — but only if the file actually exists.
+                # Bug B: previously this swallowed FileNotFoundError and returned a placeholder
+                # string that pollutes RAG retrieval. Failures must propagate.
                 logger.warning(f"Falling back to raw text extraction for {file_path}")
-                try:
-                    with open(file_path, "r", encoding="utf-8") as f:
-                        return (f.read(), None)
-                except Exception:
-                    return (f"[Error: Could not read file {os.path.basename(file_path)}]", None)
+                with open(file_path, "r", encoding="utf-8") as f:
+                    return (f.read(), None)
 
         # Text-based formats (read directly)
         else:
@@ -303,7 +302,8 @@ class DocumentIngestionPipeline:
 
         except Exception as e:
             logger.error(f"Failed to transcribe {file_path} with Whisper ASR: {e}")
-            return (f"[Error: Could not transcribe audio file {os.path.basename(file_path)}]", None)
+            # Bug B: never return a placeholder string — let the caller mark the document failed.
+            raise
 
     def extract_title(self, content: str, file_path: str) -> str:
         """
