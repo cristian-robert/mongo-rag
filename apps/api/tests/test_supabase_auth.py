@@ -56,16 +56,16 @@ def _supabase_hs256_token(secret: str, **claims) -> str:
 @pytest.mark.unit
 async def test_valid_hs256_supabase_token_extracts_claims():
     settings = _make_settings(supabase_jwt_secret="supabase-shared-secret-32-chars-aa")
-    token = _supabase_hs256_token(
-        "supabase-shared-secret-32-chars-aa",
-        app_metadata={"tenant_id": MOCK_TENANT_ID},
-    )
+    token = _supabase_hs256_token("supabase-shared-secret-32-chars-aa")
 
     claims = await verify_supabase_jwt(token, settings)
 
     assert claims.sub == "supabase-user-1"
     assert claims.email == "user@example.com"
-    assert claims.tenant_id == MOCK_TENANT_ID
+    # `tenant_id` is intentionally NOT a field on SupabaseClaims — tenant
+    # identity is resolved server-side from `public.profiles`, never from
+    # the token. See concept-principal-tenant-isolation.
+    assert not hasattr(claims, "tenant_id")
 
 
 @pytest.mark.unit
@@ -153,32 +153,6 @@ async def test_hs256_token_without_configured_secret_rejected():
         await verify_supabase_jwt(token, settings)
 
 
-@pytest.mark.unit
-async def test_tenant_id_falls_back_to_user_metadata():
-    settings = _make_settings(supabase_jwt_secret="supabase-shared-secret-32-chars-aa")
-    token = _supabase_hs256_token(
-        "supabase-shared-secret-32-chars-aa",
-        user_metadata={"tenant_id": "from-user-metadata"},
-    )
-
-    claims = await verify_supabase_jwt(token, settings)
-    assert claims.tenant_id == "from-user-metadata"
-
-
-@pytest.mark.unit
-async def test_app_metadata_wins_over_user_metadata():
-    """app_metadata is server-controlled and must be preferred."""
-    settings = _make_settings(supabase_jwt_secret="supabase-shared-secret-32-chars-aa")
-    token = _supabase_hs256_token(
-        "supabase-shared-secret-32-chars-aa",
-        app_metadata={"tenant_id": "from-app-metadata"},
-        user_metadata={"tenant_id": "user-supplied"},
-    )
-
-    claims = await verify_supabase_jwt(token, settings)
-    assert claims.tenant_id == "from-app-metadata"
-
-
 # ---------------------------------------------------------------------------
 # JWKS path
 # ---------------------------------------------------------------------------
@@ -221,7 +195,6 @@ async def test_rs256_token_verified_via_jwks(monkeypatch):
             "aud": AUDIENCE,
             "exp": int(time.time()) + 600,
             "email": "rs@example.com",
-            "app_metadata": {"tenant_id": "tenant-rs"},
         },
         pem,
         algorithm="RS256",
@@ -256,7 +229,6 @@ async def test_rs256_token_verified_via_jwks(monkeypatch):
 
     claims = await verify_supabase_jwt(token, settings)
     assert claims.sub == "supabase-user-2"
-    assert claims.tenant_id == "tenant-rs"
     assert captured == [settings.supabase_jwks_url]
 
 
@@ -300,7 +272,6 @@ async def test_jwks_cache_reused_within_ttl(monkeypatch):
                 "iss": ISSUER,
                 "aud": AUDIENCE,
                 "exp": int(time.time()) + 600,
-                "app_metadata": {"tenant_id": "t"},
             },
             pem,
             algorithm="RS256",
