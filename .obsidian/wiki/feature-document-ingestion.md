@@ -3,13 +3,17 @@ title: "Feature: Document Ingestion"
 type: feature
 tags: [feature, rag, ingestion, mongodb]
 sources:
-  - "apps/api/src/ingestion/"
+  - "apps/api/src/services/ingestion/"
+  - "apps/api/src/services/blobstore/"
+  - "apps/api/src/worker.py"
 related:
   - "[[hybrid-rrf-search]]"
   - "[[feature-rag-agent]]"
   - "[[concept-ssrf-defense-url-ingestion]]"
+  - "[[concept-celery-ingestion-worker]]"
+  - "[[decision-blobstore-handoff]]"
 created: 2026-04-29
-updated: 2026-04-30
+updated: 2026-05-01
 status: active
 ---
 
@@ -33,9 +37,11 @@ The pipeline that turns customer-uploaded documents into searchable chunks. Docl
 ## Implementation Notes
 
 - Files:
-  - `apps/api/src/ingestion/ingest.py` — orchestrator
-  - `apps/api/src/ingestion/chunker.py` — Docling HybridChunker wrapper
-  - `apps/api/src/ingestion/embedder.py` — batch embedding generation
+  - `apps/api/src/services/ingestion/ingest.py` — orchestrator (Bug B fix shipped: failures raise instead of returning `[Error:…]` placeholder strings)
+  - `apps/api/src/services/ingestion/chunker.py` — Docling HybridChunker wrapper
+  - `apps/api/src/services/ingestion/embedder.py` — batch embedding generation
+  - `apps/api/src/services/blobstore/` — `BlobStore` Protocol + `FilesystemBlobStore` + `SupabaseBlobStore` + factory + URI helpers; carries the upload from API → Celery worker via `blob_uri` (see `[[decision-blobstore-handoff]]`)
+  - `apps/api/src/worker.py` — Celery tasks `ingest_document` and `ingest_url`; both receive `blob_uri:` (never `temp_path:`), assert tenant ownership, stream-download into local tmpfile, delete blob on success/terminal failure
 - Storage:
   - `documents` — one row per uploaded file (title, source, content_hash for dedupe, metadata)
   - `chunks` — one row per chunk (`embedding[1536]`, `chunk_index`, `token_count`, references parent `document_id`)
@@ -58,3 +64,5 @@ The pipeline that turns customer-uploaded documents into searchable chunks. Docl
 
 - [[hybrid-rrf-search]] — consumes the chunks this pipeline produces
 - [[feature-rag-agent]] — uses the search built on top of these embeddings
+- [[concept-celery-ingestion-worker]] — the Celery tasks this pipeline runs inside
+- [[decision-blobstore-handoff]] — how API and worker exchange the uploaded bytes

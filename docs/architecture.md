@@ -132,16 +132,26 @@ User types question
 
 ```
 User uploads file via dashboard
-  → Next.js POST /api/v1/documents (NextAuth session)
+  → Next.js POST /api/v1/documents (Supabase session)
     → FastAPI validates session → extracts tenant_id
-      → Docling converts file → markdown
-      → HybridChunker splits → semantic chunks (max_tokens=512)
-      → Batch embed via OpenAI (text-embedding-3-small, 1536 dims, 100/batch)
-      → MongoDB insert:
-          documents: {title, source, content, content_hash, tenant_id}
-          chunks: {document_id, content, embedding[], tenant_id}
-    → Return document_id + chunk count
+      → BlobStore.put streams the upload → blob_uri
+        (file://… in dev, supabase://mongorag-uploads/<tenant>/… in prod)
+      → Insert documents row with status="pending"
+      → Celery: ingest_document.delay(document_id, tenant_id, blob_uri, …)
+    → Return document_id + status="pending" (immediate)
+
+  Worker (separate Fly Machine):
+    → _assert_tenant_owns_uri(blob_uri, tenant_id)
+    → BlobStore.get_stream → local tmpfile
+    → Docling converts file → markdown (failures raise; no [Error:…] placeholders)
+    → HybridChunker splits → semantic chunks (max_tokens=512)
+    → Batch embed via OpenAI (text-embedding-3-small, 1536 dims, 100/batch)
+    → MongoDB insert chunks
+    → Flip documents.status="ready"
+    → BlobStore.delete (24h Supabase lifecycle as safety net)
 ```
+
+API and worker run as two separate processes (two Fly Machines from one Dockerfile, switched by `PROCESS_TYPE`); the Celery payload carries `blob_uri:` rather than a filesystem path. See `[[decision-blobstore-handoff]]` for the handoff rationale and `[[decision-deploy-fly-vercel]]` for the deploy topology.
 
 **Design choices:**
 - SSE streaming for chat (not WebSockets) — simpler, stateless, works through CDNs

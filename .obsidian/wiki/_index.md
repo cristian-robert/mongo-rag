@@ -1,6 +1,6 @@
 # Wiki Index
 
-_Last updated: 2026-04-30 — 24 articles_
+_Last updated: 2026-05-01 — 26 articles_
 
 ## Concepts
 
@@ -33,6 +33,8 @@ _Last updated: 2026-04-30 — 24 articles_
 - [[decision-pydantic-ai-over-langchain]] — Chose Pydantic AI for native FastAPI fit and lighter footprint
 - [[decision-postgres-mongo-storage-split]] — Identity/billing in Postgres, RAG in Mongo (mid-migration)
 - [[decision-supabase-auth-over-nextauth]] — Supabase primary; legacy NextAuth HS256 path retained
+- [[decision-blobstore-handoff]] — `BlobStore` Protocol + `scheme://bucket/key` URIs across API → Celery worker
+- [[decision-deploy-fly-vercel]] — Vercel (web) + Fly Machines (api + worker) + Upstash + Supabase Storage
 
 ## Guides
 
