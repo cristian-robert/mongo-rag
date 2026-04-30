@@ -75,7 +75,7 @@ async def get_tenant_id(
         tenant_id = await _resolve_api_key(token, request, deps)
     else:
         pool = getattr(request.app.state, "pg_pool", None)
-        tenant_id = await _resolve_jwt(token, deps, pool)
+        tenant_id = await _resolve_jwt(token, pool)
 
     request.state.tenant_id = tenant_id
     set_request_context(tenant_id=tenant_id)
@@ -128,12 +128,13 @@ async def _resolve_api_key_mongo(raw_key: str, deps: AgentDependencies) -> str:
 async def get_tenant_id_from_jwt(
     request: Request,
     authorization: Optional[str] = Header(default=None),
-    deps: AgentDependencies = Depends(get_deps),
 ) -> str:
     """Extract tenant_id from JWT only. Rejects API keys.
 
     Used by endpoints that must only be reachable from a dashboard session
-    (e.g., key management), not from a programmatic API key.
+    (e.g., key management), not from a programmatic API key. The JWT path
+    no longer needs ``AgentDependencies`` (post-#75) — Settings load directly
+    and the Postgres pool is read off ``request.app.state``.
     """
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -150,13 +151,13 @@ async def get_tenant_id_from_jwt(
         )
 
     pool = getattr(request.app.state, "pg_pool", None)
-    tenant_id = await _resolve_jwt(token, deps, pool)
+    tenant_id = await _resolve_jwt(token, pool)
     request.state.tenant_id = tenant_id
     set_request_context(tenant_id=tenant_id)
     return tenant_id
 
 
-async def _resolve_jwt(token: str, deps: AgentDependencies, pool: Optional[asyncpg.Pool]) -> str:
+async def _resolve_jwt(token: str, pool: Optional[asyncpg.Pool]) -> str:
     """Validate a JWT (Supabase or legacy NextAuth) and return its tenant_id.
 
     Routing rule: if the token's unverified `iss` matches the configured
@@ -168,7 +169,7 @@ async def _resolve_jwt(token: str, deps: AgentDependencies, pool: Optional[async
     The Supabase path needs ``pool`` to look up the caller's profile in
     Postgres. The NextAuth path is self-contained (settings only).
     """
-    settings = deps.settings if isinstance(deps.settings, Settings) else load_settings()
+    settings = load_settings()
 
     if _looks_like_supabase_token(token, settings):
         try:
