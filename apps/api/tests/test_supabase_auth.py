@@ -318,7 +318,26 @@ async def test_jwks_cache_reused_within_ttl(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _tenant_app(supabase_secret: str | None):
+SUPABASE_SUB = "55555555-5555-5555-5555-555555555555"
+PROFILE_TENANT = "66666666-6666-6666-6666-666666666666"
+
+
+def _profile_row(tenant_id: str = PROFILE_TENANT, role: str = "owner") -> dict:
+    return {
+        "id": SUPABASE_SUB,
+        "tenant_id": tenant_id,
+        "email": "user@example.com",
+        "role": role,
+    }
+
+
+def _tenant_app(supabase_secret: str | None, *, pool_fetchrow=None):
+    """Build a tenant-resolution test app.
+
+    The Supabase auth path now reads from Postgres ``public.profiles``
+    (issue #73 follow-up). ``pool_fetchrow`` is the AsyncMock used to
+    stand in for ``pool.fetchrow``; default returns a valid profile row.
+    """
     from src.core import tenant as tenant_mod
     from src.core.tenant import get_tenant_id
 
@@ -336,33 +355,43 @@ def _tenant_app(supabase_secret: str | None):
     deps.settings = settings
     deps.api_keys_collection = MagicMock()
     deps.api_keys_collection.find_one = AsyncMock(return_value=None)
+    # Mongo users_collection must NOT be touched on the Supabase path.
     deps.users_collection = MagicMock()
-    deps.users_collection.find_one = AsyncMock(return_value=None)
+    deps.users_collection.find_one = AsyncMock(
+        side_effect=AssertionError("Mongo users_collection must not be used on Supabase path")
+    )
     app.state.deps = deps
+
+    pool = MagicMock()
+    pool.fetchrow = pool_fetchrow or AsyncMock(return_value=_profile_row())
+    app.state.pg_pool = pool
 
     # Force tenant module to re-read settings on each call
     tenant_mod.load_settings = lambda: settings  # type: ignore[assignment]
-    return app, deps
+    return app, deps, pool
 
 
 @pytest.mark.unit
 def test_supabase_token_routes_via_supabase_path():
-    app, deps = _tenant_app(supabase_secret="supabase-shared-secret-32-chars-aa")
+    app, _, pool = _tenant_app(supabase_secret="supabase-shared-secret-32-chars-aa")
     client = TestClient(app)
 
+    # The JWT carries an ``app_metadata.tenant_id`` claim, but the new code
+    # ignores it: the profile row is the source of truth.
     token = _supabase_hs256_token(
         "supabase-shared-secret-32-chars-aa",
-        app_metadata={"tenant_id": "tenant-from-supabase"},
+        sub=SUPABASE_SUB,
+        app_metadata={"tenant_id": "claim-tenant-should-be-ignored"},
     )
     resp = client.get("/test", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
-    assert resp.json()["tenant_id"] == "tenant-from-supabase"
+    assert resp.json()["tenant_id"] == PROFILE_TENANT
 
 
 @pytest.mark.unit
 def test_legacy_nextauth_token_still_works():
     """Backwards compatibility: NextAuth-issued tokens (no Supabase iss) still verify."""
-    app, deps = _tenant_app(supabase_secret=None)
+    app, _, _ = _tenant_app(supabase_secret=None)
     client = TestClient(app)
 
     token = jose_jwt.encode(
@@ -376,30 +405,61 @@ def test_legacy_nextauth_token_still_works():
 
 
 @pytest.mark.unit
-def test_supabase_token_no_tenant_id_falls_back_to_db():
-    app, deps = _tenant_app(supabase_secret="supabase-shared-secret-32-chars-aa")
-    deps.users_collection.find_one = AsyncMock(
-        return_value={
-            "_id": "u1",
-            "supabase_user_id": "supabase-user-1",
-            "tenant_id": "tenant-from-db",
-        }
-    )
+def test_supabase_token_resolves_from_profiles_row():
+    """Tenant comes from the Postgres profile row, not from claims."""
+    app, _, _ = _tenant_app(supabase_secret="supabase-shared-secret-32-chars-aa")
     client = TestClient(app)
 
-    token = _supabase_hs256_token("supabase-shared-secret-32-chars-aa")
+    token = _supabase_hs256_token(
+        "supabase-shared-secret-32-chars-aa",
+        sub=SUPABASE_SUB,
+    )
     resp = client.get("/test", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
-    assert resp.json()["tenant_id"] == "tenant-from-db"
+    assert resp.json()["tenant_id"] == PROFILE_TENANT
 
 
 @pytest.mark.unit
-def test_supabase_user_without_tenant_fails_closed():
-    app, deps = _tenant_app(supabase_secret="supabase-shared-secret-32-chars-aa")
-    deps.users_collection.find_one = AsyncMock(return_value=None)
+def test_supabase_user_without_profile_fails_closed():
+    """No matching profile in Postgres → 401, no Mongo fallback."""
+    app, _, _ = _tenant_app(
+        supabase_secret="supabase-shared-secret-32-chars-aa",
+        pool_fetchrow=AsyncMock(return_value=None),
+    )
     client = TestClient(app)
 
-    token = _supabase_hs256_token("supabase-shared-secret-32-chars-aa")
+    token = _supabase_hs256_token("supabase-shared-secret-32-chars-aa", sub=SUPABASE_SUB)
+    resp = client.get("/test", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401
+
+
+@pytest.mark.unit
+def test_supabase_token_without_pg_pool_fails_closed(monkeypatch):
+    """If app.state.pg_pool is missing, fail closed with 401."""
+    from src.core import tenant as tenant_mod
+    from src.core.tenant import get_tenant_id
+
+    settings = _make_settings(
+        supabase_jwt_secret="supabase-shared-secret-32-chars-aa",
+        supabase_url=SUPABASE_URL,
+    )
+    tenant_mod.load_settings = lambda: settings  # type: ignore[assignment]
+
+    app = FastAPI()
+
+    @app.get("/test")
+    async def _h(tenant_id: str = Depends(get_tenant_id)):  # pragma: no cover
+        return {"tenant_id": tenant_id}
+
+    deps = MagicMock()
+    deps.settings = settings
+    deps.api_keys_collection = MagicMock()
+    deps.api_keys_collection.find_one = AsyncMock(return_value=None)
+    app.state.deps = deps
+    # No app.state.pg_pool set.
+
+    client = TestClient(app)
+    token = _supabase_hs256_token("supabase-shared-secret-32-chars-aa", sub=SUPABASE_SUB)
     resp = client.get("/test", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 401
 
@@ -408,7 +468,7 @@ def test_supabase_user_without_tenant_fails_closed():
 def test_supabase_token_bad_signature_does_not_fall_through_to_nextauth():
     """A token whose `iss` is the Supabase issuer must NOT be re-verified
     against the NextAuth secret on signature failure."""
-    app, deps = _tenant_app(supabase_secret="supabase-shared-secret-32-chars-aa")
+    app, _, _ = _tenant_app(supabase_secret="supabase-shared-secret-32-chars-aa")
     client = TestClient(app)
 
     # Sign with the NextAuth secret but claim Supabase issuer → should be

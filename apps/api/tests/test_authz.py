@@ -114,9 +114,27 @@ def _supabase_token(
     return jwt.encode(payload, SUPABASE_HS256_SECRET, algorithm="HS256")
 
 
+SUPABASE_SUB = "33333333-3333-3333-3333-333333333333"
+SUPABASE_TENANT = "44444444-4444-4444-4444-444444444444"
+
+
+def _supabase_profile_row(role: str = "admin") -> dict:
+    return {
+        "id": SUPABASE_SUB,
+        "tenant_id": SUPABASE_TENANT,
+        "email": "u@example.com",
+        "role": role,
+    }
+
+
 @pytest.fixture
 def supabase_app(monkeypatch):
-    """An app whose Settings advertise Supabase HS256 as enabled."""
+    """An app whose Settings advertise Supabase HS256 as enabled.
+
+    The Supabase auth path resolves tenant + role via Postgres
+    ``public.profiles`` (issue #73 follow-up), so the fixture wires a fake
+    ``app.state.pg_pool`` whose ``fetchrow`` returns the profile row.
+    """
     monkeypatch.setenv("SUPABASE_URL", SUPABASE_ISSUER.replace("/auth/v1", ""))
     monkeypatch.setenv("SUPABASE_PROJECT_REF", "supa-test")
     monkeypatch.setenv("SUPABASE_JWT_SECRET", SUPABASE_HS256_SECRET)
@@ -133,52 +151,80 @@ def supabase_app(monkeypatch):
         return {"ok": True, "tenant_id": p.tenant_id, "role": p.role, "user_id": p.user_id}
 
     deps = MagicMock()
+    # users_collection is no longer consulted on the Supabase path; keep an
+    # explicit assertion that nothing on it is awaited.
     deps.users_collection.find_one = AsyncMock(
-        return_value={
-            "_id": "mongo-uid-1",
-            "supabase_user_id": "supabase-user-1",
-            "tenant_id": "tenant-supa-1",
-            "role": "admin",
-            "email": "u@example.com",
-        }
+        side_effect=AssertionError("Mongo users_collection must not be used on Supabase path")
     )
     app.dependency_overrides[get_deps] = lambda: deps
-    return TestClient(app), deps
+
+    pool = MagicMock()
+    pool.fetchrow = AsyncMock(return_value=_supabase_profile_row("admin"))
+    app.state.pg_pool = pool
+
+    return TestClient(app), pool
 
 
 @pytest.mark.unit
 def test_supabase_token_resolves_principal_with_role(supabase_app):
     client, _ = supabase_app
-    r = client.get("/admin-plus", headers={"Authorization": f"Bearer {_supabase_token()}"})
+    r = client.get(
+        "/admin-plus", headers={"Authorization": f"Bearer {_supabase_token(sub=SUPABASE_SUB)}"}
+    )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["tenant_id"] == "tenant-supa-1"
+    assert body["tenant_id"] == SUPABASE_TENANT
     assert body["role"] == "admin"
-    assert body["user_id"] == "mongo-uid-1"
+    assert body["user_id"] == SUPABASE_SUB
 
 
 @pytest.mark.unit
 def test_supabase_token_user_not_found_is_401(supabase_app):
-    client, deps = supabase_app
-    deps.users_collection.find_one = AsyncMock(return_value=None)
-    r = client.get("/admin-plus", headers={"Authorization": f"Bearer {_supabase_token()}"})
+    client, pool = supabase_app
+    pool.fetchrow = AsyncMock(return_value=None)
+    r = client.get(
+        "/admin-plus", headers={"Authorization": f"Bearer {_supabase_token(sub=SUPABASE_SUB)}"}
+    )
     assert r.status_code == 401
 
 
 @pytest.mark.unit
 def test_supabase_token_with_role_below_required_is_403(supabase_app):
-    client, deps = supabase_app
-    deps.users_collection.find_one = AsyncMock(
-        return_value={
-            "_id": "mongo-uid-1",
-            "supabase_user_id": "supabase-user-1",
-            "tenant_id": "tenant-supa-1",
-            "role": "viewer",
-            "email": "u@example.com",
-        }
+    client, pool = supabase_app
+    pool.fetchrow = AsyncMock(return_value=_supabase_profile_row("viewer"))
+    r = client.get(
+        "/admin-plus", headers={"Authorization": f"Bearer {_supabase_token(sub=SUPABASE_SUB)}"}
     )
-    r = client.get("/admin-plus", headers={"Authorization": f"Bearer {_supabase_token()}"})
     assert r.status_code == 403
+
+
+@pytest.mark.unit
+def test_supabase_token_without_pg_pool_is_401(monkeypatch):
+    """If the Postgres pool is missing, fail closed with 401."""
+    monkeypatch.setenv("SUPABASE_URL", SUPABASE_ISSUER.replace("/auth/v1", ""))
+    monkeypatch.setenv("SUPABASE_PROJECT_REF", "supa-test")
+    monkeypatch.setenv("SUPABASE_JWT_SECRET", SUPABASE_HS256_SECRET)
+    monkeypatch.setenv("SUPABASE_JWT_AUDIENCE", SUPABASE_AUDIENCE)
+
+    from src.core.authz import Principal, require_role
+    from src.core.deps import get_deps
+    from src.models.user import UserRole
+
+    app = FastAPI()
+
+    @app.get("/admin-plus")
+    async def admin(p: Principal = Depends(require_role(UserRole.ADMIN))):  # pragma: no cover
+        return {"ok": True}
+
+    deps = MagicMock()
+    app.dependency_overrides[get_deps] = lambda: deps
+    # No pg_pool attribute on app.state.
+
+    client = TestClient(app)
+    r = client.get(
+        "/admin-plus", headers={"Authorization": f"Bearer {_supabase_token(sub=SUPABASE_SUB)}"}
+    )
+    assert r.status_code == 401
 
 
 @pytest.mark.unit
