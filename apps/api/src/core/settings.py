@@ -210,7 +210,9 @@ class Settings(BaseSettings):
 
     upload_temp_dir: str = Field(
         default="./.tmp/uploads",
-        description="Temporary directory for FilesystemBlobStore (and the uploaded-file staging area).",
+        description=(
+            "Temporary directory for FilesystemBlobStore (and the uploaded-file staging area)."
+        ),
     )
 
     # Blob storage (ingestion handoff)
