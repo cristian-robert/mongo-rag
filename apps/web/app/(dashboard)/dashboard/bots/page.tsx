@@ -45,13 +45,11 @@ export default async function BotsPage() {
             internal knowledge — and embed them with a single script tag.
           </p>
         </div>
-        <Button
-          render={(props) => (
-            <Link {...props} href="/dashboard/bots/new" />
-          )}
-        >
-          <Plus />
-          New bot
+        <Button asChild>
+          <Link href="/dashboard/bots/new">
+            <Plus />
+            New bot
+          </Link>
         </Button>
       </header>
 

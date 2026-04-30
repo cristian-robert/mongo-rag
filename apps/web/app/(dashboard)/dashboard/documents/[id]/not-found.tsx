@@ -14,8 +14,8 @@ export default function DocumentNotFound() {
       <p className="text-sm text-muted-foreground">
         It may have been deleted, or you may not have permission to view it.
       </p>
-      <Button render={(props) => <Link {...props} href="/dashboard/documents" />}>
-        Back to documents
+      <Button asChild>
+        <Link href="/dashboard/documents">Back to documents</Link>
       </Button>
     </div>
   );

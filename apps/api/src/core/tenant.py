@@ -6,8 +6,9 @@ Three supported credential formats on `Authorization: Bearer <token>`:
    #42). The legacy MongoDB-backed sha256 lookup is kept behind
    ``API_KEY_BACKEND=mongo`` for emergency rollback only.
 2. Supabase user JWT — verified via JWKS or a configured shared secret;
-   `tenant_id` is taken from claims or, as a fallback, derived from the
-   user document keyed by Supabase `sub`.
+   `tenant_id` is resolved from Postgres ``public.profiles`` keyed by the
+   JWT ``sub`` (the Postgres trigger ``handle_new_user`` guarantees a
+   profile per ``auth.users`` row, so a missing profile is a 401).
 3. Legacy NextAuth.js JWT — verified with the shared `nextauth_secret`.
 
 Routing between (2) and (3) is done by a cheap `iss` peek before
@@ -21,9 +22,11 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+import asyncpg
 from fastapi import Depends, Header, HTTPException, Request
 
 from src.auth import api_keys as pg_api_keys
+from src.auth.profiles import lookup_profile
 from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
 from src.core.observability import set_request_context
@@ -71,16 +74,15 @@ async def get_tenant_id(
     if token.startswith(_API_KEY_PREFIX):
         tenant_id = await _resolve_api_key(token, request, deps)
     else:
-        tenant_id = await _resolve_jwt(token, deps)
+        pool = getattr(request.app.state, "pg_pool", None)
+        tenant_id = await _resolve_jwt(token, deps, pool)
 
     request.state.tenant_id = tenant_id
     set_request_context(tenant_id=tenant_id)
     return tenant_id
 
 
-async def _resolve_api_key(
-    raw_key: str, request: Request, deps: AgentDependencies
-) -> str:
+async def _resolve_api_key(raw_key: str, request: Request, deps: AgentDependencies) -> str:
     """Validate an API key and return its tenant_id.
 
     Postgres is the default. Falls back to Mongo when:
@@ -147,13 +149,14 @@ async def get_tenant_id_from_jwt(
             detail="API keys cannot access this endpoint",
         )
 
-    tenant_id = await _resolve_jwt(token, deps)
+    pool = getattr(request.app.state, "pg_pool", None)
+    tenant_id = await _resolve_jwt(token, deps, pool)
     request.state.tenant_id = tenant_id
     set_request_context(tenant_id=tenant_id)
     return tenant_id
 
 
-async def _resolve_jwt(token: str, deps: AgentDependencies) -> str:
+async def _resolve_jwt(token: str, deps: AgentDependencies, pool: Optional[asyncpg.Pool]) -> str:
     """Validate a JWT (Supabase or legacy NextAuth) and return its tenant_id.
 
     Routing rule: if the token's unverified `iss` matches the configured
@@ -161,6 +164,9 @@ async def _resolve_jwt(token: str, deps: AgentDependencies) -> str:
     NextAuth path is tried. **No fall-through** between paths — a Supabase
     token with a bad signature must NOT fall back to HS256/NextAuth
     verification (algorithm-confusion guard).
+
+    The Supabase path needs ``pool`` to look up the caller's profile in
+    Postgres. The NextAuth path is self-contained (settings only).
     """
     settings = deps.settings if isinstance(deps.settings, Settings) else load_settings()
 
@@ -170,7 +176,7 @@ async def _resolve_jwt(token: str, deps: AgentDependencies) -> str:
         except ValueError as e:
             logger.debug("Supabase JWT rejected: %s", e)
             raise HTTPException(status_code=401, detail="Invalid or expired token") from None
-        return await _tenant_id_from_supabase_claims(claims, deps)
+        return await _tenant_id_from_supabase_claims(claims, pool)
 
     return _resolve_nextauth_jwt(token, settings)
 
@@ -188,29 +194,27 @@ def _resolve_nextauth_jwt(token: str, settings: Settings) -> str:
     return tenant_id
 
 
-async def _tenant_id_from_supabase_claims(claims: SupabaseClaims, deps: AgentDependencies) -> str:
-    """Resolve tenant_id from Supabase claims, falling back to a DB lookup.
+async def _tenant_id_from_supabase_claims(
+    claims: SupabaseClaims, pool: Optional[asyncpg.Pool]
+) -> str:
+    """Resolve tenant_id from Supabase claims via Postgres ``public.profiles``.
 
-    Order of preference:
-        1. `tenant_id` from claims (server-controlled `app_metadata` is best).
-        2. Lookup in the `users` collection by `supabase_user_id` (the JWT `sub`).
-        3. As a last resort, lookup by email.
+    The profile row (populated by the ``handle_new_user`` trigger) is the
+    sole source of truth — JWT-supplied ``tenant_id`` claims are NOT
+    consulted. This matches the web frontend behaviour and prevents a
+    user-editable claim from overriding the server-side mapping.
 
-    Fail-closed: if no tenant_id can be determined, raise 401.
+    Fail-closed: if the pool is missing or the profile is absent, raise 401.
     """
-    if claims.tenant_id:
-        return claims.tenant_id
+    if pool is None:
+        logger.error("tenant_pg_pool_unavailable", extra={"sub": claims.sub})
+        raise HTTPException(status_code=401, detail="Authentication backend unavailable")
 
-    users = deps.users_collection
-    user_doc = await users.find_one({"supabase_user_id": claims.sub})
-    if not user_doc and claims.email:
-        user_doc = await users.find_one({"email": claims.email.lower()})
-
-    tenant_id = user_doc.get("tenant_id") if user_doc else None
-    if not tenant_id:
+    profile = await lookup_profile(pool, claims.sub)
+    if profile is None:
         logger.info(
             "supabase_user_without_tenant",
             extra={"sub": claims.sub, "has_email": claims.email is not None},
         )
         raise HTTPException(status_code=401, detail="User has no tenant assigned")
-    return tenant_id
+    return profile.tenant_id

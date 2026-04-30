@@ -18,10 +18,11 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+import tiktoken
 from docling.chunking import HybridChunker
+from docling_core.transforms.chunker.tokenizer.openai import OpenAITokenizer
 from docling_core.types.doc import DoclingDocument
 from dotenv import load_dotenv
-from transformers import AutoTokenizer
 
 # Load environment variables
 load_dotenv()
@@ -38,6 +39,11 @@ class ChunkingConfig:
     max_chunk_size: int = 2000  # Maximum chunk size (used in fallback)
     min_chunk_size: int = 100  # Minimum chunk size (used in fallback)
     max_tokens: int = 512  # Maximum tokens for embedding models
+    # Drives the tokenizer used for token-precise chunking. Must match the
+    # actual embedder so chunk sizes line up with what the embedder sees.
+    # Unknown values fall back to the cl100k_base encoding (used by all
+    # current OpenAI text embedding + chat models).
+    embedding_model: str = "text-embedding-3-small"
 
     def __post_init__(self):
         """Validate configuration."""
@@ -86,19 +92,36 @@ class DoclingHybridChunker:
         """
         self.config = config
 
-        # Initialize tokenizer for token-aware chunking
-        model_id = "sentence-transformers/all-MiniLM-L6-v2"
-        logger.info(f"Initializing tokenizer: {model_id}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        # Tokenize with the embedder's own tokenizer so chunk sizes match
+        # what the embedder actually sees. tiktoken is in-process Rust —
+        # no model download, no on-disk cache, no /app/.cache permission
+        # surface. For unknown model names (e.g., self-hosted Ollama),
+        # fall back to cl100k_base which is shared by all current OpenAI
+        # text embedding + chat models.
+        try:
+            encoding = tiktoken.encoding_for_model(config.embedding_model)
+        except KeyError:
+            logger.info(
+                "tiktoken_encoding_fallback",
+                extra={"model": config.embedding_model, "fallback": "cl100k_base"},
+            )
+            encoding = tiktoken.get_encoding("cl100k_base")
+        self.tokenizer = OpenAITokenizer(tokenizer=encoding, max_tokens=config.max_tokens)
 
-        # Create HybridChunker
         self.chunker = HybridChunker(
             tokenizer=self.tokenizer,
             max_tokens=config.max_tokens,
             merge_peers=True,  # Merge small adjacent chunks
         )
 
-        logger.info(f"HybridChunker initialized (max_tokens={config.max_tokens})")
+        logger.info(
+            "hybrid_chunker_initialized",
+            extra={
+                "max_tokens": config.max_tokens,
+                "embedding_model": config.embedding_model,
+                "encoding": encoding.name,
+            },
+        )
 
     async def chunk_document(
         self,
@@ -153,7 +176,7 @@ class DoclingHybridChunker:
                 contextualized_text = self.chunker.contextualize(chunk=chunk)
 
                 # Count actual tokens
-                token_count = len(self.tokenizer.encode(contextualized_text))
+                token_count = self.tokenizer.count_tokens(contextualized_text)
 
                 # Create chunk metadata
                 chunk_metadata = {
@@ -229,7 +252,7 @@ class DoclingHybridChunker:
                 end = chunk_end
 
             if chunk_text.strip():
-                token_count = len(self.tokenizer.encode(chunk_text))
+                token_count = self.tokenizer.count_tokens(chunk_text)
 
                 chunks.append(
                     DocumentChunk(

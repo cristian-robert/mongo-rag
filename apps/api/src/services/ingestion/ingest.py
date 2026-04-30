@@ -92,6 +92,7 @@ class DocumentIngestionPipeline:
             chunk_overlap=config.chunk_overlap,
             max_chunk_size=config.max_chunk_size,
             max_tokens=config.max_tokens,
+            embedding_model=self.settings.embedding_model,
         )
 
         self.chunker = create_chunker(self.chunker_config)
