@@ -34,7 +34,7 @@ async def lookup_profile(pool: asyncpg.Pool, sub: str) -> Optional[ProfileRow]:
     """
     try:
         sub_uuid = uuid.UUID(sub)
-    except (ValueError, TypeError, AttributeError):
+    except (ValueError, TypeError):
         return None
 
     row = await pool.fetchrow(
