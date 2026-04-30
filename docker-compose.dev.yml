@@ -1,0 +1,40 @@
+# Hybrid local dev: only redis + celery worker run in docker.
+# api (FastAPI) and web (Next.js) run on the host via scripts/dev.sh.
+# Use:   docker compose -f docker-compose.dev.yml up -d
+# Worker reuses the mongorag-api:dev image. Rebuild after celery-task
+# code changes:  docker compose -f docker-compose.dev.yml build worker
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: mongorag-api:dev
+    command: ["celery", "-A", "src.worker", "worker", "--loglevel=info", "--concurrency=2"]
+    env_file:
+      - path: ./apps/api/.env
+        required: false
+    environment:
+      # Worker stays on the docker network — talks to redis by service name.
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  redis-data:
