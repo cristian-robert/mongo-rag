@@ -1,0 +1,25 @@
+app = "mongorag-worker"
+primary_region = "iad"
+
+# Co-located with fly.api.toml at apps/api/ so both share the same Docker
+# build context (Option B from Task 13). Worker uses the same image as the
+# API; PROCESS_TYPE=worker switches the entrypoint to celery.
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PROCESS_TYPE = "worker"
+
+[deploy]
+  strategy = "rolling"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 2
+  memory_mb = 1024
+
+[machine]
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
