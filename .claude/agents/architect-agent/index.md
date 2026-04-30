@@ -61,6 +61,13 @@ _Last verified: 2026-04-30 (post-foundation-sprint coverage pass)_
 - **Postgres:** `supabase/migrations/20260429190107_init_tenancy.sql` (tenants, profiles, api_keys, subscriptions, RLS, helper fns, on_auth_user_created trigger), `20260429200000_stripe_events.sql` (idempotency table). Applied via Supabase CLI.
 - **Atlas Search / Vector indexes:** NOT in migrations — `apps/api/scripts/setup_indexes.py` or Atlas UI.
 
+## Test Web App (apps/testWebApp/, Next.js 16.2.4, React 19.2.4)
+
+Dev-only widget integration test host. No auth, no Supabase, no shadcn. Loads `packages/widget/dist/widget.js` to simulate a third-party site. Runs on **port 3101**.
+
+- Domain file: `frontend/test-web-app.md`
+- Related: `[[feature-embeddable-widget]]`, `[[tooling-test-web-app]]`
+
 ## Frontend Layout (apps/web/, Next.js 16.2.1, React 19.2.4)
 
 ### Route groups

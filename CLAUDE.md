@@ -39,20 +39,20 @@ This repo also runs the **AIDevelopmentFramework** (PIV+E loop) for development 
 ```text
 mongo-rag/
 ├── apps/
-│   ├── api/                 # FastAPI backend (Python)
+│   ├── api/                 # FastAPI backend (Python) — see .claude/agents/architect-agent/index.md
 │   │   └── src/
-│   │       ├── agent.py     # Pydantic AI agent with search tools
-│   │       ├── tools.py     # Hybrid RRF search (semantic + text + fusion)
-│   │       ├── providers.py # Pluggable LLM/embedding providers
-│   │       ├── settings.py  # Pydantic Settings configuration
-│   │       ├── dependencies.py
-│   │       ├── prompts.py
-│   │       └── ingestion/
-│   │           ├── ingest.py    # MongoDB ingestion pipeline
-│   │           ├── chunker.py   # Docling HybridChunker wrapper
-│   │           └── embedder.py  # Batch embedding generation
-│   └── web/                 # Next.js frontend
-│       └── app/             # App Router pages
+│   │       ├── core/            # Settings, Principal, auth, DB, middleware, observability
+│   │       ├── routers/         # FastAPI endpoints (chat, ingest, billing, team, …)
+│   │       ├── services/        # Business logic (agent, ingestion, billing, citations)
+│   │       ├── models/          # Pydantic schemas
+│   │       ├── migrations/      # Postgres + Mongo index migrations
+│   │       ├── auth/            # API key + Supabase JWT verification
+│   │       ├── eval/            # RAG eval harness (recall@k / MRR / nDCG)
+│   │       ├── main.py          # FastAPI app factory
+│   │       └── cli.py           # CLI agent
+│   ├── web/                 # Next.js frontend
+│   │   └── app/             # App Router pages
+│   └── testWebApp/          # Next.js widget test host (port 3101)
 ├── packages/
 │   └── widget/              # Embeddable JS chat widget
 ├── docs/
@@ -64,6 +64,8 @@ mongo-rag/
 ├── CLAUDE.md
 └── LICENSE
 ```
+
+> See `[[tooling-test-web-app]]` for the testWebApp widget-test host details.
 
 ---
 
@@ -167,10 +169,7 @@ pnpm test                        # Tests
 
 - **Backend** (`apps/api/.env`): `MONGODB_URI`, `DATABASE_URL` (Supabase Postgres), `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `LLM_API_KEY`, `EMBEDDING_API_KEY`, `LLM_MODEL`, `EMBEDDING_MODEL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
 - **Frontend** (`apps/web/.env.local`): `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`
-
-## Code Patterns & Conventions
-
-> Read `.claude/references/code-patterns.md` when writing, reviewing, or debugging code.
+- All loaded via Pydantic Settings — never hardcode. `LLM_MODEL` defaults to `anthropic/claude-haiku-4.5`; `EMBEDDING_MODEL` defaults to `text-embedding-3-small`.
 
 ## Key Patterns from Reference Repo
 
@@ -199,40 +198,9 @@ Identity / authn / billing live in **Postgres (Supabase)**. RAG content lives in
 
 Every database query (Mongo and Postgres) sources `tenant_id` from a verified `Principal` via `apps/api/src/core/principal.py` helpers (`tenant_filter`, `tenant_doc`). Client-supplied `tenant_id` is rejected. See `[[concept-principal-tenant-isolation]]`.
 
-## Configuration
-
-All secrets and configuration load from environment variables via Pydantic Settings. Never hardcode secrets. Key variables:
-- `MONGODB_URI` — Atlas connection string
-- `LLM_API_KEY` / `EMBEDDING_API_KEY` — Provider API keys
-- `LLM_MODEL` — Model identifier (e.g., `anthropic/claude-haiku-4.5`)
-- `EMBEDDING_MODEL` — Embedding model (default: `text-embedding-3-small`)
-
 ## Code Style
 
-### Python (backend)
-
-- Type annotations on all function signatures and return types
-- Pydantic models for all data structures (not raw dicts)
-- Async for all I/O (MongoDB, HTTP, embedding calls)
-- Use `asyncio.gather` for concurrent independent operations
-- Pydantic Settings for configuration, not raw `os.getenv`
-- Structured logging with context (not print statements)
-- Handle MongoDB-specific exceptions: `ConnectionFailure`, `OperationFailure`, `ServerSelectionTimeoutError`
-- Embeddings are Python lists of floats, never JSON strings
-
-### TypeScript (frontend)
-
-- Strict TypeScript, no `any` types
-- Server components by default, client components only when needed
-- Clean, functional components
-- React Hook Form + Zod for forms
-
-### General
-
-- No premature abstractions — three similar lines beat a wrapper nobody needs
-- No dead code, no commented-out code, no `_unused` variables
-- Tests mirror the source tree structure
-- Validate at system boundaries (user input, external APIs), trust internal code
+Authoritative source: `.claude/references/code-patterns.md` (general patterns + pitfalls) and the per-domain rules in `.claude/rules/{backend,frontend,database,security,testing}.md` which auto-load by file path. Read those first; do not duplicate the rules here.
 
 ## Common Pitfalls
 

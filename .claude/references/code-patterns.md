@@ -247,3 +247,56 @@ from pymongo import MongoClient
 # CORRECT — Use motor for async
 from motor.motor_asyncio import AsyncIOMotorClient
 ```
+
+---
+
+## Scaffolding a New Frontend App in the Monorepo
+
+When adding a new Next.js / Vite / Expo app under `apps/`, **always run the official CLI scaffolder** instead of writing files by hand. Hand-rolled scaffolds drift from current framework defaults and waste turns. See `[[tooling-test-web-app]]` for the full case study.
+
+### Next.js — match `apps/web` defaults
+
+```bash
+# 1. Scaffold into a LOWERCASE name (npm forbids capitals in package names)
+cd apps && pnpm create next-app@latest my-app \
+  --ts --app --no-src-dir --tailwind --eslint --use-pnpm --turbopack \
+  --import-alias "@/*" --yes
+
+# 2. (Optional) rename the folder to camelCase — package name in package.json
+#    stays hyphenated, only the directory is renamed
+mv apps/my-app apps/myApp
+
+# 3. After ANY rename of a pnpm-installed dir, reinstall to rebuild the
+#    absolute-path symlinks under node_modules/.pnpm/. Skipping this step
+#    causes "Can't resolve 'tailwindcss'" / RSC manifest errors at dev time.
+cd apps/myApp && rm -rf node_modules .next && pnpm install
+
+# 4. Pin Turbopack root to silence wrong-workspace-root warning when stray
+#    lockfiles exist higher in the tree (e.g. ~/package-lock.json).
+```
+
+```ts
+// apps/myApp/next.config.ts
+import type { NextConfig } from "next";
+const nextConfig: NextConfig = {
+  turbopack: { root: __dirname },
+};
+export default nextConfig;
+```
+
+```jsonc
+// apps/myApp/package.json — set the port up-front so it doesn't collide with
+// apps/web (3100) or other local services
+{
+  "scripts": {
+    "dev": "next dev --port <PORT>",
+    "start": "next start --port <PORT>"
+  }
+}
+```
+
+### Common pitfalls
+
+- **`name can no longer contain capital letters`** from `create-next-app` — scaffold lowercase, then `mv` the folder if you need camelCase.
+- **`Can't resolve 'tailwindcss'` after a rename** — pnpm symlinks point at the old path. `rm -rf node_modules .next && pnpm install`.
+- **`Next.js inferred your workspace root, but it may not be correct`** — set `turbopack.root` to the app directory in `next.config.ts`.

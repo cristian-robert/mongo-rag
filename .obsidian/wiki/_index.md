@@ -1,6 +1,6 @@
 # Wiki Index
 
-_Last updated: 2026-04-30 — 23 articles_
+_Last updated: 2026-04-30 — 24 articles_
 
 ## Concepts
 
@@ -37,6 +37,10 @@ _Last updated: 2026-04-30 — 23 articles_
 ## Guides
 
 _(none yet — created as needed)_
+
+## Tooling
+
+- [[tooling-test-web-app]] — `apps/testWebApp` — Next.js host page on port 3101 for manual widget verification (stub)
 
 ## Comparisons
 

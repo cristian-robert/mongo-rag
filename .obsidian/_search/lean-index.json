@@ -1,5 +1,5 @@
 {
-  "generated": "2026-04-30T08:00:07.680Z",
+  "generated": "2026-04-30T10:40:47.025Z",
   "docs": [
     {
       "file": "concept-celery-ingestion-worker.md",
@@ -285,6 +285,18 @@
         "mongodb"
       ],
       "summary": "MongoRAG runs all customers on a shared MongoDB cluster."
+    },
+    {
+      "file": "tooling-test-web-app.md",
+      "title": "testWebApp — Widget Test Host",
+      "type": "feature",
+      "tags": [
+        "tooling",
+        "widget",
+        "nextjs",
+        "dev"
+      ],
+      "summary": "> Stub — expand during `/kb compile`."
     }
   ]
 }
