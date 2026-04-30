@@ -126,7 +126,9 @@ async def verify_supabase_jwt(token: str, settings: Settings) -> SupabaseClaims:
         settings: Application settings (must have Supabase configured).
 
     Returns:
-        SupabaseClaims with `sub` and optional `email`. `tenant_id` is
+        SupabaseClaims with `sub`, optional `email`, and `raw` (the full
+        verified JWT payload, retained for callers that need additional
+        non-tenant claims such as `app_metadata`). `tenant_id` is
         deliberately NOT extracted from the token; callers must resolve
         the tenant from Postgres ``public.profiles`` keyed by ``sub``
         (see ``[[concept-principal-tenant-isolation]]``).
