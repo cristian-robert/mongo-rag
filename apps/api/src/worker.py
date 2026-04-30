@@ -323,12 +323,14 @@ def ingest_url(
     import asyncio
 
     async def _run() -> dict:
+        import io
         import os
         import tempfile
 
         from pymongo import AsyncMongoClient
 
         from src.models.document import DocumentModel, DocumentStatus
+        from src.services.blobstore import get_blob_store
         from src.services.ingestion.chunker import ChunkingConfig, create_chunker
         from src.services.ingestion.embedder import create_embedder
         from src.services.ingestion.ingest import DocumentIngestionPipeline, IngestionConfig
@@ -347,6 +349,8 @@ def ingest_url(
             chunks_collection=db[settings.mongodb_collection_chunks],
         )
 
+        blob_uri: str | None = None
+        blob_store = None
         temp_dir = tempfile.mkdtemp(prefix="mongorag-url-")
         try:
             await service.update_status(document_id, tenant_id, DocumentStatus.PROCESSING)
@@ -388,9 +392,16 @@ def ingest_url(
                 _xlsx: ".xlsx",
             }
             ext = mime_to_ext.get(fetched.content_type, ".bin")
+            blob_store = get_blob_store()
+            key = f"{tenant_id}/{document_id}/url-fetch{ext}"
+            blob_uri = await blob_store.put(key, io.BytesIO(fetched.content), fetched.content_type)
+
+            # Stream back to a tempfile in the worker — same hot path as ingest_document.
             temp_path = os.path.join(temp_dir, f"document{ext}")
-            with open(temp_path, "wb") as f:
-                f.write(fetched.content)
+            async with blob_store.open(blob_uri) as stream:
+                with open(temp_path, "wb") as f:
+                    async for chunk in stream:
+                        f.write(chunk)
 
             config = IngestionConfig()
             pipeline = DocumentIngestionPipeline(config=config, tenant_id=tenant_id)
@@ -525,6 +536,10 @@ def ingest_url(
 
             if os.path.exists(temp_dir):
                 _shutil.rmtree(temp_dir, ignore_errors=True)
+
+            # Delete the blob copy of the fetched URL content (always — it's a transient stage).
+            if blob_store is not None and blob_uri is not None:
+                await _safe_delete(blob_store, blob_uri)
 
     return asyncio.run(_run())
 
