@@ -39,12 +39,12 @@ class AgentDependencies:
             ServerSelectionTimeoutError: If MongoDB server selection times out
             ValueError: If settings cannot be loaded
         """
-        if not self.settings:
+        if self.settings is None:
             self.settings = load_settings()
             logger.info("settings_loaded", extra={"database": self.settings.mongodb_database})
 
         # Initialize MongoDB client with connection pooling
-        if not self.mongo_client:
+        if self.mongo_client is None:
             try:
                 self.mongo_client = AsyncMongoClient(
                     self.settings.mongodb_uri,
@@ -68,7 +68,7 @@ class AgentDependencies:
                 raise
 
         # Initialize OpenAI client for embeddings
-        if not self.openai_client:
+        if self.openai_client is None:
             self.openai_client = openai.AsyncOpenAI(
                 api_key=self.settings.embedding_api_key,
                 base_url=self.settings.embedding_base_url,
@@ -85,7 +85,7 @@ class AgentDependencies:
 
     def _get_collection(self, name: str) -> AsyncCollection:
         """Get a MongoDB collection by name. Requires initialize() first."""
-        if not self.db:
+        if self.db is None:
             raise RuntimeError("Dependencies not initialized. Call initialize() first.")
         return self.db[name]
 
@@ -149,7 +149,7 @@ class AgentDependencies:
 
     async def cleanup(self) -> None:
         """Clean up external connections."""
-        if self.mongo_client:
+        if self.mongo_client is not None:
             await self.mongo_client.close()
             self.mongo_client = None
             self.db = None
@@ -168,7 +168,7 @@ class AgentDependencies:
         Raises:
             Exception: If embedding generation fails
         """
-        if not self.openai_client:
+        if self.openai_client is None:
             await self.initialize()
 
         response = await self.openai_client.embeddings.create(
