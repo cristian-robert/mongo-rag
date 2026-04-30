@@ -48,6 +48,38 @@ def test_chunking_config_defaults_match_documented_constants():
     assert config.max_chunk_size == 2000
     assert config.min_chunk_size == 100
     assert config.max_tokens == 512
+    assert config.embedding_model == "text-embedding-3-small"
+
+
+@pytest.mark.unit
+def test_chunker_uses_tiktoken_for_known_openai_model(monkeypatch):
+    """DoclingHybridChunker picks the encoding that matches the embedder.
+
+    Pinned because the previous implementation downloaded a HuggingFace
+    tokenizer at __init__ time, which crashed in containers without a
+    writable /app/.cache (#77). tiktoken is in-process — no network, no
+    cache directory.
+    """
+    from src.services.ingestion.chunker import DoclingHybridChunker
+
+    config = ChunkingConfig(embedding_model="text-embedding-3-small")
+    chunker = DoclingHybridChunker(config)
+
+    # cl100k_base is shared by every current OpenAI text embedding + chat model.
+    assert chunker.tokenizer.get_tokenizer().name == "cl100k_base"
+    # Token counter is the OpenAITokenizer wrapper, which exposes count_tokens.
+    assert chunker.tokenizer.count_tokens("hello world") > 0
+
+
+@pytest.mark.unit
+def test_chunker_falls_back_to_cl100k_for_unknown_embedding_model():
+    """Unknown / self-hosted embedders fall back to cl100k_base instead of crashing."""
+    from src.services.ingestion.chunker import DoclingHybridChunker
+
+    config = ChunkingConfig(embedding_model="nomic-embed-text")  # not in tiktoken
+    chunker = DoclingHybridChunker(config)
+
+    assert chunker.tokenizer.get_tokenizer().name == "cl100k_base"
 
 
 @pytest.mark.unit
