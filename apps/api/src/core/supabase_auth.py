@@ -38,11 +38,17 @@ _SYMMETRIC_ALGS = ("HS256",)
 
 @dataclass
 class SupabaseClaims:
-    """The minimal set of claims we extract from a verified Supabase JWT."""
+    """The minimal set of claims we extract from a verified Supabase JWT.
+
+    `tenant_id` is intentionally NOT carried here. Tenant identity is
+    resolved server-side from Postgres ``public.profiles`` keyed by
+    ``sub`` — JWT claims are request input and must never be the source
+    of truth for the tenant boundary. See
+    ``[[concept-principal-tenant-isolation]]``.
+    """
 
     sub: str
     email: Optional[str]
-    tenant_id: Optional[str]
     raw: dict[str, Any]
 
 
@@ -120,7 +126,10 @@ async def verify_supabase_jwt(token: str, settings: Settings) -> SupabaseClaims:
         settings: Application settings (must have Supabase configured).
 
     Returns:
-        SupabaseClaims with `sub`, optional `email`, optional `tenant_id`.
+        SupabaseClaims with `sub` and optional `email`. `tenant_id` is
+        deliberately NOT extracted from the token; callers must resolve
+        the tenant from Postgres ``public.profiles`` keyed by ``sub``
+        (see ``[[concept-principal-tenant-isolation]]``).
 
     Raises:
         ValueError: On any verification failure (invalid signature, wrong
@@ -205,9 +214,8 @@ async def verify_supabase_jwt(token: str, settings: Settings) -> SupabaseClaims:
         raise ValueError("Token missing sub claim")
 
     email = payload.get("email") if isinstance(payload.get("email"), str) else None
-    tenant_id = _extract_tenant_id(payload)
 
-    return SupabaseClaims(sub=sub, email=email, tenant_id=tenant_id, raw=payload)
+    return SupabaseClaims(sub=sub, email=email, raw=payload)
 
 
 def _select_jwk(jwks: dict[str, Any], kid: str) -> Optional[dict[str, Any]]:
@@ -215,27 +223,4 @@ def _select_jwk(jwks: dict[str, Any], kid: str) -> Optional[dict[str, Any]]:
     for entry in jwks.get("keys", []):
         if isinstance(entry, dict) and entry.get("kid") == kid:
             return entry
-    return None
-
-
-def _extract_tenant_id(payload: dict[str, Any]) -> Optional[str]:
-    """Pull `tenant_id` from the standard Supabase metadata locations.
-
-    Looks in this order:
-        1. top-level `tenant_id`
-        2. `app_metadata.tenant_id` (server-controlled — preferred)
-        3. `user_metadata.tenant_id` (user-editable — accepted as a fallback
-           but should not be the source of truth in production)
-    """
-    direct = payload.get("tenant_id")
-    if isinstance(direct, str) and direct:
-        return direct
-
-    for bucket in ("app_metadata", "user_metadata"):
-        meta = payload.get(bucket)
-        if isinstance(meta, dict):
-            tid = meta.get("tenant_id")
-            if isinstance(tid, str) and tid:
-                return tid
-
     return None
