@@ -7,7 +7,7 @@
 **Architecture:** Three orthogonal fixes on one branch:
 1. Backend: stop using `bool()` on `pymongo.AsyncDatabase` in `core/dependencies.py`.
 2. Frontend: stop passing function `render` props from Server Components to the Client `<Button>`; use `asChild` instead.
-3. Backend: make `core/authz.get_principal` Supabase-aware by delegating JWT verification to the same `verify_supabase_jwt` path used by `core/tenant.py`, then resolving role/tenant from the Mongo `users` doc keyed by `supabase_user_id`. Keep the legacy NextAuth path as a fallback.
+3. Backend: make `core/authz.get_principal` Supabase-aware by delegating JWT verification to the same `verify_supabase_jwt` path used by `core/tenant.py`, then resolving role/tenant from Postgres `public.profiles` keyed by `auth.users.id` (the JWT `sub`) via a new shared `apps/api/src/auth/profiles.py` helper. Keep the legacy NextAuth path as a fallback.
 
 **Tech Stack:** FastAPI / Pydantic / pymongo (async) / python-jose / Next.js App Router / Base UI / Supabase Auth.
 
@@ -35,8 +35,16 @@
 | `apps/web/app/(dashboard)/dashboard/documents/[id]/not-found.tsx` | Modify | Server Component → use `asChild` for Button+Link |
 | `apps/api/src/core/authz.py` | Modify | Add Supabase-aware branch in `get_principal`; new `_principal_from_supabase_claims` helper |
 | `apps/api/tests/test_authz.py` | Modify | Add Supabase-token tests (success, missing user, missing tenant, expired) |
+| `apps/api/src/auth/profiles.py` | Create | Shared `lookup_profile` helper resolving Supabase JWT `sub` → tenant/role via Postgres `public.profiles` |
+| `apps/api/tests/test_profiles_lookup.py` | Create | Regression tests for `lookup_profile` (happy path, missing profile, malformed sub) |
+| `apps/api/src/core/tenant.py` | Modify | Resolve Supabase tenant via `lookup_profile` (fail-closed when pool/profile missing); drop Mongo fallback |
+| `apps/api/tests/test_supabase_auth.py` | Modify | Update tenant-resolution tests for the profiles-row path |
+| `apps/api/src/services/ingestion/chunker.py` | Modify | Switch from HuggingFace `transformers` tokenizer to OpenAI `tiktoken` (in-process, model-aware) |
+| `apps/api/src/services/ingestion/ingest.py` | Modify | Plumb `embedding_model` from settings into chunker config |
+| `apps/api/tests/test_chunker_config.py` | Create | Pin tokenizer selection + fallback behavior (refs #77) |
+| `apps/api/pyproject.toml` | Modify | Replace `transformers` dep with `tiktoken>=0.8.0` |
 
-No new modules. No package additions.
+New module: `apps/api/src/auth/profiles.py`. Package change: `transformers` → `tiktoken`.
 
 ---
 
@@ -347,7 +355,7 @@ def test_legacy_nextauth_token_still_works(supabase_app):
     assert r.status_code == 200
 ```
 
-> If `load_settings` is not LRU-cached, the `cache_clear()` line will need adjusting — read `src/core/settings.py:load_settings` first and either drop the line (if it builds Settings fresh each call) or call the appropriate reset hook.
+> `src/core/settings.py::load_settings()` constructs a fresh `Settings()` on each call in the current codebase, so no `cache_clear()` or other settings-reset step is needed here.
 
 - [ ] **Step 3.2 — Run the failing tests**
 

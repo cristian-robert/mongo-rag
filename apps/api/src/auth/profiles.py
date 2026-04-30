@@ -8,14 +8,11 @@ provisioned (401, not 404) — there is no Mongo fallback in the new world.
 
 from __future__ import annotations
 
-import logging
 import uuid
 from dataclasses import dataclass
 from typing import Optional
 
 import asyncpg
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
