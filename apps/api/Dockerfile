@@ -44,7 +44,8 @@ FROM python:3.11.11-slim-bookworm AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/opt/venv/bin:$PATH" \
-    PORT=8100
+    PORT=8100 \
+    PROCESS_TYPE=api
 
 # tini = PID 1 reaper; ca-certificates required for outbound TLS to Atlas/OpenAI.
 RUN apt-get update \
@@ -60,6 +61,8 @@ WORKDIR /app
 COPY --from=builder --chown=app:app /opt/venv /opt/venv
 COPY --chown=app:app src/ ./src/
 COPY --chown=app:app pyproject.toml ./
+COPY --chown=app:app scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 USER app
 
@@ -70,5 +73,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8100/health',timeout=5).status==200 else 1)" \
     || exit 1
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8100"]
+# PROCESS_TYPE switch: `api` runs uvicorn, `worker` runs celery. Fly worker
+# group overrides PROCESS_TYPE=worker; default `api` keeps compose/local
+# behaviour unchanged.
+ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
