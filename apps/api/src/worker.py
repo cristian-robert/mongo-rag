@@ -100,6 +100,8 @@ def ingest_document(
         blob_read_failed = False
         docling_failed = False
         tmp_path: str | None = None
+        committed = False  # True after update_status(READY) lands
+        chunk_count: int = 0
 
         try:
             await service.update_status(document_id, tenant_id, DocumentStatus.PROCESSING)
@@ -220,6 +222,7 @@ def ingest_document(
                 version=version,
                 content=content,
             )
+            committed = True
 
             # Success — delete blob (lifecycle rule is the safety net if this fails).
             await _safe_delete(blob_store, blob_uri)
@@ -243,6 +246,25 @@ def ingest_document(
             }
 
         except Exception as e:
+            if committed:
+                # Post-success exception (delete or log raised). The doc was
+                # already persisted READY — do NOT mark it FAILED. The lifecycle
+                # rule will catch any leaked blob.
+                task_logger.warning(
+                    "post_success_exception",
+                    extra={
+                        "document_id": document_id,
+                        "tenant_id": tenant_id,
+                        "exc": type(e).__name__,
+                        "msg": str(e)[:200],
+                    },
+                )
+                return {
+                    "document_id": document_id,
+                    "status": "ready",
+                    "chunk_count": chunk_count,
+                }
+
             task_logger.exception("Ingestion failed: doc=%s, error=%s", document_id, str(e))
             safe_error = type(e).__name__
             if isinstance(e, (ValueError, TypeError, FileNotFoundError)):
@@ -350,6 +372,8 @@ def ingest_url(
         blob_store = None
         blob_size: int = 0
         docling_failed = False
+        committed = False  # True after update_status(READY) lands
+        chunk_count: int = 0
         temp_dir = tempfile.mkdtemp(prefix="mongorag-url-")
         try:
             await service.update_status(document_id, tenant_id, DocumentStatus.PROCESSING)
@@ -566,6 +590,7 @@ def ingest_url(
                 version=version,
                 content=content,
             )
+            committed = True
 
             # Success — delete blob (lifecycle rule is the safety net if this fails).
             await _safe_delete(blob_store, blob_uri)
@@ -588,6 +613,25 @@ def ingest_url(
             }
 
         except Exception as e:
+            if committed:
+                # Post-success exception (delete or log raised). The doc was
+                # already persisted READY — do NOT mark it FAILED. The lifecycle
+                # rule will catch any leaked blob.
+                task_logger.warning(
+                    "post_success_exception",
+                    extra={
+                        "document_id": document_id,
+                        "tenant_id": tenant_id,
+                        "exc": type(e).__name__,
+                        "msg": str(e)[:200],
+                    },
+                )
+                return {
+                    "document_id": document_id,
+                    "status": "ready",
+                    "chunk_count": chunk_count,
+                }
+
             task_logger.exception("URL ingestion failed: doc=%s err=%s", document_id, e)
             safe_error = type(e).__name__
             try:

@@ -174,6 +174,60 @@ async def test_ingestion_missing_blob_marks_failed(mongo_db, tmp_path, monkeypat
     )
 
 
+async def test_post_success_exception_does_not_mark_failed(mongo_db, tmp_path, monkeypatch) -> None:
+    """Regression: if cleanup/log raises after update_status(READY), the doc
+    must NOT be flipped to FAILED on the same call.
+
+    Strategy: monkeypatch ``_safe_delete`` in ``src.worker`` to raise after
+    the success path commits. The broad except must observe ``committed=True``
+    and short-circuit to a "ready" return without mutating the document.
+    """
+    pytest.importorskip("docling")  # heavyweight optional dep
+
+    _patch_worker_for_test_db(monkeypatch, mongo_db, tmp_path)
+
+    tenant_id = "tenant-it-postsuccess"
+    source = "test.md"
+    title = "Test"
+
+    document_id = await _seed_pending_document(mongo_db, tenant_id, source, title)
+
+    from src.services.blobstore import get_blob_store
+
+    payload = b"# Test\n\nHello world. " + b"x " * 200
+    import io
+
+    blob_store = get_blob_store()
+    key = f"{tenant_id}/{document_id}/{source}"
+    blob_uri = await blob_store.put(key, io.BytesIO(payload), "text/markdown")
+
+    # Patch _safe_delete to raise on the success-path call. This simulates
+    # a transient blob-delete failure happening AFTER update_status(READY).
+    from src import worker as worker_module
+
+    async def _raising_safe_delete(_blob_store, _blob_uri):
+        raise RuntimeError("simulated post-success delete failure")
+
+    monkeypatch.setattr(worker_module, "_safe_delete", _raising_safe_delete)
+
+    result = await asyncio.to_thread(
+        _run_worker_task, blob_uri, document_id, tenant_id, source, title
+    )
+
+    # Doc must remain READY despite the post-success exception.
+    doc = await mongo_db["documents"].find_one({"_id": document_id})
+    assert doc is not None
+    assert doc["status"] == "ready", (
+        f"post-success exception flipped doc to {doc['status']!r}: {doc.get('error_message')!r}"
+    )
+    assert doc.get("chunk_count", 0) >= 1
+
+    # And the task return shape says ready, not failed.
+    assert result.successful(), f"task didn't complete cleanly: {result.traceback}"
+    payload_out = result.get(disable_sync_subtasks=False)
+    assert payload_out["status"] == "ready"
+
+
 async def test_chunks_never_contain_error_placeholder(mongo_db) -> None:
     """Bug B regression scan: no chunk in the DB starts with '[Error:'.
 
