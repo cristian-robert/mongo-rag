@@ -10,11 +10,13 @@ from src.services.blobstore import BlobAccessError
 
 # Configure Celery. Each task re-reads settings via load_settings() inside
 # `_run` so tests can monkeypatch env vars without also patching a
-# module-level cache.
+# module-level cache. The single import-time read below is only used for
+# Celery's broker/backend wiring.
+_settings_at_import = load_settings()
 celery_app = Celery(
     "mongorag",
-    broker=load_settings().redis_url,
-    backend=load_settings().redis_url,
+    broker=_settings_at_import.redis_url,
+    backend=_settings_at_import.redis_url,
 )
 
 celery_app.conf.update(
