@@ -82,7 +82,7 @@ Managed by `scripts/fly-secrets.sh` (sourced from `apps/api/.env`, pushed to **b
 | `STRIPE_SECRET_KEY` | Stripe API |
 | `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing |
 | `REDIS_URL` | Upstash `rediss://` (broker + result backend) |
-| `BLOB_STORE` | `supabase` in prod, `filesystem` in local dev |
+| `BLOB_STORE` | `supabase` in prod, `fs` in local dev |
 | `NEXTAUTH_SECRET` | Legacy NextAuth fallback (still wired) |
 
 Rotate by editing `apps/api/.env` and re-running `./scripts/fly-secrets.sh both`. Fly restarts machines automatically on secret change.
