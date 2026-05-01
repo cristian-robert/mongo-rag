@@ -142,7 +142,7 @@ User uploads file via dashboard
 
   Worker (separate Fly Machine):
     → _assert_tenant_owns_uri(blob_uri, tenant_id)
-    → BlobStore.get_stream → local tmpfile
+    → BlobStore.open → local tmpfile
     → Docling converts file → markdown (failures raise; no [Error:…] placeholders)
     → HybridChunker splits → semantic chunks (max_tokens=512)
     → Batch embed via OpenAI (text-embedding-3-small, 1536 dims, 100/batch)
