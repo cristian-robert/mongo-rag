@@ -41,6 +41,35 @@ class TestAssertTenantOwnsURI:
         with pytest.raises(InvalidBlobURIError):
             assert_tenant_owns_uri("supabase://mongorag-uploads/", "tenant-a")
 
+    def test_supabase_uri_percent_encoded_tenant_decoded_then_matched(self):
+        """%2da → -a; the URI tenant segment must decode before comparison."""
+        assert_tenant_owns_uri(
+            "supabase://mongorag-uploads/tenant%2da/doc-1/file.pdf",
+            "tenant-a",
+        )
+
+    def test_supabase_uri_tenant_segment_with_percent_after_decode_rejected(self):
+        """A literal % in a tenant id is suspicious — reject."""
+        with pytest.raises(InvalidBlobURIError):
+            assert_tenant_owns_uri(
+                "supabase://mongorag-uploads/%25weird/doc-1/file.pdf",
+                "%weird",
+            )
+
+    def test_supabase_uri_tenant_segment_with_dotdot_rejected(self):
+        with pytest.raises(InvalidBlobURIError):
+            assert_tenant_owns_uri(
+                "supabase://mongorag-uploads/..upper/doc-1/file.pdf",
+                "..upper",
+            )
+
+    def test_supabase_uri_tenant_segment_with_null_byte_rejected(self):
+        with pytest.raises(InvalidBlobURIError):
+            assert_tenant_owns_uri(
+                "supabase://mongorag-uploads/tenant%00a/doc-1/file.pdf",
+                "tenant\x00a",
+            )
+
 
 class TestExtractExtension:
     def test_pdf(self):

@@ -36,12 +36,19 @@ def assert_tenant_owns_uri(
     if parsed.scheme == "supabase":
         # supabase://<bucket>/<tenant>/<doc>/<file>
         # `netloc` is the bucket; `path` is /tenant/doc/file
-        path_parts = parsed.path.lstrip("/").split("/", 1)
+        from urllib.parse import unquote
+
+        decoded_path = unquote(parsed.path)
+        path_parts = decoded_path.lstrip("/").split("/", 1)
         if not path_parts or not path_parts[0]:
             raise InvalidBlobURIError(f"missing tenant segment: {uri}")
-        if path_parts[0] != tenant_id:
+        tenant_segment = path_parts[0]
+        # Defensive: reject suspicious characters in the tenant segment.
+        if any(c in tenant_segment for c in ("/", "..", "%", "\x00")):
+            raise InvalidBlobURIError(f"unsafe tenant segment {tenant_segment!r} in: {uri}")
+        if tenant_segment != tenant_id:
             raise TenantOwnershipError(
-                f"tenant mismatch: uri={path_parts[0]!r} expected={tenant_id!r}"
+                f"tenant mismatch: uri={tenant_segment!r} expected={tenant_id!r}"
             )
         return
 
