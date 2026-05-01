@@ -1,50 +1,34 @@
 # Knowledge Base Health Report
 
-_Generated: 2026-04-30 (post coverage-pass)_
+_Generated: 2026-05-02 (post `/kb compile` after #79 merge)_
 
 ## Stats
 
 | Metric | Count |
 |--------|-------|
-| Total articles | 23 |
-| Compiled / active | 22 |
-| Draft | 1 (`feature-stripe-billing.md`) |
+| Total articles | 27 |
+| Compiled | 19 |
+| Active / accepted / draft (alternate but valid status) | 8 |
 | Stubs | 0 |
+| Total raw sources | 4 |
+| Pending sources | 0 |
 
-## Coverage pass — what changed
+## What this run did
 
-**Driver:** user asked whether documentation was based on actual code exploration. It wasn't. 7 parallel `Explore` agents read the real implementation in: RAG pipeline, billing, ingestion + SSRF, auth + Principal, backend services, web frontend, widget + infra.
+Two stubs created in the prior `/evolve` run were expanded to full articles, manifest updated, KB indexes rebuilt.
 
-**Articles rewritten** (factual corrections after agent reports):
+**Compiled this run:**
 
-1. `decision-postgres-mongo-storage-split.md` — earlier version implied a clean split; reality is a **partial migration**. Mongo still hosts `users` (legacy), `tenants` (legacy), `invitations`, `webhooks`, `usage`, and an `api_keys` fallback path.
-2. `concept-principal-tenant-isolation.md` — corrected to note **two Principal classes** (`core.principal.Principal` and `core.authz.Principal`), `tenant_filter` actively overrides (with warning) rather than rejecting, middleware scans recursively to depth 5 with 1 MiB cap, audit allow-list has ~17 entries.
-3. `decision-supabase-auth-over-nextauth.md` — corrected: **NextAuth was NOT fully replaced**. Both JWT verification paths (Supabase JWKS RS256 + legacy NextAuth HS256) coexist with token-shape routing. Auth router has its own credential endpoints.
-4. `concept-stripe-webhook-idempotency.md` — replaced fabricated SQL with the real schema from `supabase/migrations/20260429200000_stripe_events.sql`. Real query: `INSERT … ON CONFLICT (event_id) DO NOTHING RETURNING event_id`. `processed_at` set post-dispatch.
-5. `concept-ssrf-defense-url-ingestion.md` — corrected: it's **block-listing**, not allow-listing. Added the explicit metadata-host set, scheme allow-list, MIME allow-list, URL credential rejection, 2048-char URL cap, and the documented DNS-rebinding TOCTOU caveat.
-
-**Articles created** (10 new, all compiled):
-
-- `concept-celery-ingestion-worker.md` — Celery + Redis (not asyncio BackgroundTasks)
-- `feature-rag-pipeline-enhancements.md` — reranker / query rewrite / citations
-- `feature-rag-eval-harness.md` — JSONL dataset, metrics, CI threshold gates
-- `feature-embeddable-widget.md` — IIFE bundle, closed Shadow DOM, SSE
-- `feature-outbound-webhooks.md` — HMAC-SHA256, exp backoff, fire-and-forget MVP
-- `feature-team-management-rbac.md` — owner/admin/member/viewer, last-owner protection
-- `feature-bot-configuration.md` — per-bot prompt + widget + document filter
-- `feature-analytics-dashboard.md` — `$facet` over `conversations`
-- `concept-rate-limiting-fixed-window.md` — fixed-window (not token-bucket); InMemory + Redis backends
-- `concept-observability-stack.md` — JSON logs, ContextVars, redaction, Sentry, /health vs /ready
-
-**Architect-agent KB:** `.claude/agents/architect-agent/index.md` rewritten end-to-end. The previous version listed Postgres tables as Mongo collections, said "NextAuth.js for dashboard auth", and missed ~10 modules.
+1. `wiki/concept-subagent-driven-execution-gotchas.md` — three (now four) recurring subagent dispatch failure modes, with a drop-in subagent prompt boilerplate. Source: `raw/sessions/2026-05-02-blobstore-fly-deploy-learnings.md`. Cross-linked from `_global.md`.
+2. `wiki/tooling-test-web-app.md` — restructured the rich stub into the canonical `Overview / Content / Key takeaways / Examples / See also` template; added bidirectional `related:` link with `feature-embeddable-widget.md`. Source: `raw/sessions/2026-04-30-test-web-app-scaffold.md`.
 
 ## Structural Issues
 
 ### Orphaned Articles
-- None — every article has at least one `related:` entry and at least one inbound link.
+- None.
 
 ### Broken Wikilinks
-- None detected.
+- `[[2026-05-02-blobstore-fly-deploy-learnings]]` referenced from two wiki articles. **Not actually broken** — it links to the raw session note at `raw/sessions/2026-05-02-blobstore-fly-deploy-learnings.md`, which Obsidian's linkpath resolver finds via vault search. Flagged here only because `cli/kb-search.js` scans only `wiki/` for resolution targets; this is a known limitation of the indexer, not a content bug.
 
 ### Old Stubs (>30 days)
 - None.
@@ -54,30 +38,31 @@ _Generated: 2026-04-30 (post coverage-pass)_
 
 ## Content Issues
 
-### Duplicates / Differentiation
-- `multi-tenancy-tenant-isolation.md` (broad concept) vs `concept-principal-tenant-isolation.md` (implementation chokepoint) — kept both, cross-linked. Differentiated.
-- `concept-rate-limiting-fixed-window.md` (algorithm + interface) vs `feature-usage-metering-rate-limiting.md` (the higher-level feature) — kept both, cross-linked.
+### Potential Duplicates
+| Article A | Article B | Shared Tags | Suggestion |
+|---|---|---|---|
+| (none new this run) | | | |
 
-### Inconsistencies Resolved
-- `multi-tenancy-tenant-isolation.md` previously listed `api_keys / users / subscriptions` as Mongo collections — fixed in earlier compile.
-- 5 newly-rewritten articles now match real code.
+### Missing Key Takeaways
+- None — all 27 articles have a `Key takeaways` section.
 
 ### Stale Sources
 - None.
 
 ## Suggestions
 
-### Possibly missing
-- A dedicated `feature-document-crud-api.md` (today documented inside `feature-document-ingestion.md`)
-- A dedicated `feature-chat-endpoint.md` covering both REST/SSE and WebSocket-with-ticket auth
-- A `decision-celery-over-asyncio-tasks.md` if the asyncio-task fire-and-forget pattern in outbound webhooks is migrated to Celery
+### Merge Candidates
+- None new this run.
+
+### Missing Concepts (mentioned in 3+ articles without their own page)
+- A dedicated `concept-celery-autoretry-and-terminal-failure.md` could capture the `_will_celery_retry(task, exc)` predicate + the `_is_terminal_failure` symmetry introduced in Wave C of #79. Currently lives only in `worker.py` source. Worth elevating only if reused beyond ingestion.
+- A dedicated `decision-blob-uri-scheme.md` — the choice between `fs://` / `supabase://` / future `s3://` is documented inside `decision-blobstore-handoff.md`. If a third backend lands, split it out.
 
 ### Stale Articles
 - None.
 
 ## Karpathy Lint-Pass Findings (Step 7d)
 
-1. **Resolved drift across 5 prior articles** — all updated against real source files (path-and-line-cited where useful).
-2. **Architect-agent KB stale** — rewritten in this pass.
-3. **CLAUDE.md MongoDB Collections section** — fixed in the prior `/evolve` run; verified still consistent.
-4. **No speculative edits** — every change traceable to a specific file or migration.
+1. **Indexer wikilink-resolution gap** — `cli/kb-search.js` scans only `wiki/` for link targets. Wikilinks pointing at `raw/sessions/*` (legitimate in Obsidian) are flagged as broken by the indexer's own check. Not a content issue; consider widening the resolver or accepting the false positive.
+2. **Mixed status vocabulary** — articles use `compiled` (concepts/features), `active` (some features), `accepted` (decisions), `draft` (one stripe-billing article in progress). The `/kb compile` health check needs to recognize all four as valid. Currently only `compiled` and `stub` are checked; the others slip through as MISSING in naive greps.
+3. **No speculative edits** — every change traceable to a raw source file. The two compiled articles fold in additional learnings (4th and 5th from the raw session) that were noted but not pasted verbatim.

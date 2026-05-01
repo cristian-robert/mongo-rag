@@ -1,5 +1,5 @@
 {
-  "generated": "2026-05-01T23:01:24.576Z",
+  "generated": "2026-05-01T23:11:52.720Z",
   "docs": [
     {
       "file": "concept-celery-ingestion-worker.md",
@@ -90,7 +90,7 @@
         "workflow",
         "development"
       ],
-      "summary": "Three recurring failure modes when dispatching subagents to execute multi-task plans."
+      "summary": "When the orchestrator dispatches a subagent (via the `Agent` tool) to execute a multi-task plan, four failure modes recur often enough to warrant a stable bo..."
     },
     {
       "file": "decision-blobstore-handoff.md",
@@ -335,7 +335,7 @@
         "nextjs",
         "dev"
       ],
-      "summary": "> Stub — expand during `/kb compile`."
+      "summary": "`apps/testWebApp` is a third Next.js application in the monorepo (alongside `apps/web` and `apps/api`), running on **port 3101**."
     }
   ]
 }
