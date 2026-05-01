@@ -74,19 +74,18 @@ def main() -> int:
         ]
     }
     try:
-        client.put_bucket_lifecycle_configuration(
-            Bucket=bucket, LifecycleConfiguration=rules
-        )
+        client.put_bucket_lifecycle_configuration(Bucket=bucket, LifecycleConfiguration=rules)
         print(f"Lifecycle rule installed on {bucket!r} (delete after 1 day)")
     except ClientError as e:
         # Supabase Storage's S3-compat layer may not implement lifecycle ops.
-        # Print a clear hint and exit 0 — bucket creation succeeded.
         code = e.response.get("Error", {}).get("Code")
         print(
             f"WARNING: lifecycle config failed ({code}). "
-            f"If Supabase doesn't support lifecycle via S3 API, "
-            f"configure the 1-day expiration via the Supabase dashboard."
+            f"Configure the 1-day expiration manually via the Supabase dashboard "
+            f"(Storage → {bucket} → Configuration). Bucket creation succeeded.",
+            file=sys.stderr,
         )
+        return 2  # distinct non-zero so CI / scripts can detect partial success
     return 0
 
 

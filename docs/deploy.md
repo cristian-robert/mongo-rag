@@ -39,6 +39,11 @@ SUPABASE_S3_SECRET_KEY=<s3-secret-key> \
 SUPABASE_STORAGE_BUCKET=mongorag-uploads \
   uv run python scripts/setup_supabase_storage.py
 
+# Note: setup_supabase_storage.py exits 2 (not 0) when the lifecycle rule failed
+# to install via the S3 API. This is non-fatal — the bucket exists and is
+# usable — but you must configure the 1-day object expiration manually in the
+# Supabase dashboard before going live, otherwise blob cost will accumulate.
+
 # 4. Deploy both Fly machines from apps/api/
 fly deploy -c apps/api/fly.api.toml
 fly deploy -c apps/api/fly.worker.toml
