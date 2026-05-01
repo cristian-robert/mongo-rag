@@ -3,7 +3,7 @@
 from typing import Literal, Optional
 
 from dotenv import load_dotenv
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load environment variables from .env file
@@ -220,6 +220,14 @@ class Settings(BaseSettings):
         default="fs",
         description="Backend for ingestion blob handoff: 'fs' (local) or 'supabase'.",
     )
+
+    @field_validator("blob_store", mode="before")
+    @classmethod
+    def _normalize_blob_store(cls, v):
+        """Accept BLOB_STORE case-insensitively before Literal validation."""
+        if isinstance(v, str):
+            return v.lower()
+        return v
 
     supabase_storage_bucket: Optional[str] = Field(
         default=None,

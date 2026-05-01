@@ -66,6 +66,32 @@ def test_settings_uses_settings_config_dict():
     assert Settings.model_config.get("env_file") == ".env"
 
 
+def test_blob_store_accepts_uppercase(monkeypatch):
+    """Case-insensitive: BLOB_STORE=Supabase must work like supabase."""
+    monkeypatch.setenv("BLOB_STORE", "Supabase")
+    monkeypatch.setenv("SUPABASE_STORAGE_BUCKET", "test-bucket")
+    from src.core.settings import Settings
+
+    s = Settings()
+    assert s.blob_store == "supabase"
+
+
+def test_blob_store_accepts_mixed_case(monkeypatch):
+    monkeypatch.setenv("BLOB_STORE", "FS")
+    from src.core.settings import Settings
+
+    s = Settings()
+    assert s.blob_store == "fs"
+
+
+def test_blob_store_rejects_unknown_value(monkeypatch):
+    monkeypatch.setenv("BLOB_STORE", "azure")
+    from src.core.settings import Settings
+
+    with pytest.raises(Exception):  # ValidationError
+        Settings()
+
+
 def test_settings_app_env_declared_exactly_once():
     """Regression: Bug fix — app_env was declared twice, second silently shadowed first."""
     import ast
