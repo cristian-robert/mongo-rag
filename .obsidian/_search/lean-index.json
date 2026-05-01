@@ -1,5 +1,5 @@
 {
-  "generated": "2026-04-30T10:40:47.025Z",
+  "generated": "2026-04-30T23:37:02.482Z",
   "docs": [
     {
       "file": "concept-celery-ingestion-worker.md",
@@ -79,6 +79,33 @@
         "postgres"
       ],
       "summary": "Stripe delivers webhook events at-least-once."
+    },
+    {
+      "file": "decision-blobstore-handoff.md",
+      "title": "\"Decision: BlobStore handoff between API and Celery worker\"",
+      "type": "decision",
+      "tags": [
+        "decision",
+        "ingestion",
+        "blobstore",
+        "architecture",
+        "celery"
+      ],
+      "summary": "API and Celery worker hand uploaded files between processes via a `BlobStore` Protocol that emits `scheme://bucket/key` URIs (`file://…` in dev, `supabase://..."
+    },
+    {
+      "file": "decision-deploy-fly-vercel.md",
+      "title": "\"Decision: Vercel + Fly + Upstash + Supabase Storage deploy\"",
+      "type": "decision",
+      "tags": [
+        "decision",
+        "deploy",
+        "infrastructure",
+        "fly",
+        "vercel",
+        "upstash"
+      ],
+      "summary": "Production deploy targets: **Vercel** for the Next.js dashboard, **Fly Machines** for both API and Celery worker (single Dockerfile, two `fly.toml` files, `P..."
     },
     {
       "file": "decision-postgres-mongo-storage-split.md",

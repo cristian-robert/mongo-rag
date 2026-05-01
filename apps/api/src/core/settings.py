@@ -3,8 +3,8 @@
 from typing import Literal, Optional
 
 from dotenv import load_dotenv
-from pydantic import ConfigDict, Field
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Load environment variables from .env file
 load_dotenv()
@@ -13,7 +13,7 @@ load_dotenv()
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
 
-    model_config = ConfigDict(
+    model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
     )
 
@@ -209,7 +209,51 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = Field(default=50, description="Maximum file upload size in MB")
 
     upload_temp_dir: str = Field(
-        default="/tmp/mongorag-uploads", description="Temporary directory for uploaded files"
+        default="./.tmp/uploads",
+        description=(
+            "Temporary directory for FilesystemBlobStore (and the uploaded-file staging area)."
+        ),
+    )
+
+    # Blob storage (ingestion handoff)
+    blob_store: Literal["fs", "supabase"] = Field(
+        default="fs",
+        description="Backend for ingestion blob handoff: 'fs' (local) or 'supabase'.",
+    )
+
+    @field_validator("blob_store", mode="before")
+    @classmethod
+    def _normalize_blob_store(cls, v):
+        """Accept BLOB_STORE case-insensitively before Literal validation."""
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
+    supabase_storage_bucket: Optional[str] = Field(
+        default=None,
+        description="Supabase Storage bucket name. Required when blob_store='supabase'.",
+    )
+
+    supabase_s3_access_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Supabase Storage S3 access key id. Required when blob_store='supabase'. "
+            "Mint under Supabase dashboard → Project Settings → Storage → S3 Connection. "
+            "NOT the service-role secret."
+        ),
+    )
+
+    supabase_s3_secret_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Supabase Storage S3 secret. Required when blob_store='supabase'. "
+            "Mint alongside supabase_s3_access_key in the dashboard."
+        ),
+    )
+
+    supabase_s3_region: str = Field(
+        default="us-east-1",
+        description="boto3 region label for the Supabase S3-compatible endpoint.",
     )
 
     # URL Ingestion Configuration
@@ -409,11 +453,6 @@ class Settings(BaseSettings):
     log_level: str = Field(
         default="INFO",
         description="Root log level (DEBUG, INFO, WARNING, ERROR)",
-    )
-
-    app_env: str = Field(
-        default="development",
-        description="Deployment environment tag attached to logs and Sentry events",
     )
 
     sentry_dsn: Optional[str] = Field(

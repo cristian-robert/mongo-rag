@@ -1,0 +1,26 @@
+app = "mongorag-api"
+primary_region = "iad"
+
+# This toml lives at apps/api/fly.api.toml so the toml's directory IS the
+# Docker build context (Option B from Task 13). The Dockerfile and
+# scripts/entrypoint.sh are both reachable from this dir, so all COPY paths
+# in the Dockerfile resolve cleanly without needing build.context overrides.
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PROCESS_TYPE = "api"
+  PORT = "8100"
+
+[http_service]
+  internal_port = 8100
+  force_https = true
+  auto_stop_machines = "off"
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512

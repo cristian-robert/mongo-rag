@@ -122,3 +122,35 @@ async def test_store_chunks_with_tenant_id_and_chunk_id():
     assert inserted[0]["tenant_id"] == "tenant-1"
     assert "chunk_id" in inserted[0]
     assert inserted[0]["embedding_model"] == "text-embedding-3-small"
+
+
+@pytest.mark.unit
+def test_read_document_raises_on_missing_file(tmp_path):
+    """Bug B regression — missing file MUST raise, not return a placeholder string."""
+    from src.services.ingestion.ingest import DocumentIngestionPipeline, IngestionConfig
+
+    pipeline = DocumentIngestionPipeline(
+        config=IngestionConfig(),
+        tenant_id="test-tenant",
+        clean_before_ingest=False,
+    )
+    missing = str(tmp_path / "does-not-exist.pdf")
+    with pytest.raises((FileNotFoundError, OSError)):
+        pipeline.read_document(missing)
+
+
+@pytest.mark.unit
+def test_read_document_never_returns_error_placeholder(tmp_path):
+    """Bug B regression — content must never start with '[Error:' on any path."""
+    from src.services.ingestion.ingest import DocumentIngestionPipeline, IngestionConfig
+
+    pipeline = DocumentIngestionPipeline(
+        config=IngestionConfig(),
+        tenant_id="test-tenant",
+        clean_before_ingest=False,
+    )
+    # A real markdown file should round-trip fine.
+    p = tmp_path / "real.md"
+    p.write_text("# Hello\n\nWorld")
+    content, _ = pipeline.read_document(str(p))
+    assert not content.startswith("[Error:")

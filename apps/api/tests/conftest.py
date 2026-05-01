@@ -8,6 +8,7 @@ os.environ.setdefault("RESEND_API_KEY", "re_test_placeholder")
 os.environ.setdefault("MONGODB_URI", "mongodb://localhost:27017/mongorag-test")
 os.environ.setdefault("LLM_API_KEY", "test-llm-key")
 os.environ.setdefault("EMBEDDING_API_KEY", "test-embedding-key")
+os.environ.setdefault("BLOB_STORE", "fs")
 
 from unittest.mock import AsyncMock, MagicMock
 

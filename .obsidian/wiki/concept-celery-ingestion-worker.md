@@ -9,8 +9,9 @@ sources:
 related:
   - "[[feature-document-ingestion]]"
   - "[[concept-ssrf-defense-url-ingestion]]"
+  - "[[decision-blobstore-handoff]]"
 created: 2026-04-30
-updated: 2026-04-30
+updated: 2026-05-01
 status: compiled
 ---
 
@@ -31,16 +32,17 @@ Document and URL ingestion run as Celery tasks against a Redis broker, not as in
 ### Tasks
 
 **`ingest_document`** (`worker.py:33-222`)
-- Trigger: `routers/ingest.py:159` after file upload + document row created with `status="pending"`
+- Trigger: `routers/ingest.py` after upload is streamed through `BlobStore.put` and document row created with `status="pending"`
+- Calls `_assert_tenant_owns_uri(blob_uri, tenant_id)`, then `BlobStore.get_stream(blob_uri)` into a local tmpfile
 - Reads doc via Docling, chunks (HybridChunker, max 512 tokens), embeds in batches of 100 against `text-embedding-3-small`, inserts to Mongo `chunks`, flips document `status="ready"`
 - Audio formats (`.mp3`, `.wav`, `.m4a`, `.flac`) take a Whisper ASR fallback path
 - `max_retries=3`, autoretry on `ConnectionError` / `OSError`, backoff 10s → 90s
-- Temp file cleanup in `finally` block
+- Cleanup: blob deleted on success or terminal failure; retained on retryable errors (so the next attempt still has the bytes); 24h Supabase lifecycle as a safety net for orphans
 
 **`ingest_url`** (`worker.py:225-462`)
-- Trigger: `routers/ingest.py:237-243` after `validate_url` passes synchronously at the endpoint
+- Trigger: `routers/ingest.py` after `validate_url` passes synchronously at the endpoint
 - Calls `fetch_url(url, settings)` from `services/ingestion/url_loader.py` — see `[[concept-ssrf-defense-url-ingestion]]` for the full validation set re-run on every redirect
-- Writes the response to a temp file with a MIME-derived extension, then runs the same Docling → chunk → embed → persist pipeline
+- Writes the fetched response through `BlobStore.put` (same handoff as file uploads), then streams it back via `get_stream` into a local tmpfile, then runs the same Docling → chunk → embed → persist pipeline
 - HTML-to-markdown fallback if Docling can't handle the response
 - `max_retries=2`, autoretry on `ConnectionError`, backoff 15s → 120s
 
@@ -49,10 +51,10 @@ Document and URL ingestion run as Celery tasks against a Redis broker, not as in
 Inside the request handler:
 
 ```python
-task = ingest_document.delay(document_id=str(doc.id), tenant_id=tenant_id, ...)
+task = ingest_document.delay(document_id=str(doc.id), tenant_id=tenant_id, blob_uri=blob_uri, ...)
 ```
 
-The endpoint returns immediately with `status="pending"`. The web frontend polls `GET /api/v1/documents/{id}/status` (or refreshes the documents list) to discover when the worker has flipped status to `"ready"` or `"failed"`.
+The Celery payload carries `blob_uri:` (e.g. `supabase://mongorag-uploads/<tenant>/<uuid>` or `file://...` in dev), never a filesystem path — see `[[decision-blobstore-handoff]]`. The endpoint returns immediately with `status="pending"`. The web frontend polls `GET /api/v1/documents/{id}/status` (or refreshes the documents list) to discover when the worker has flipped status to `"ready"` or `"failed"`.
 
 ### Why Celery (not FastAPI BackgroundTasks)
 
@@ -79,3 +81,4 @@ The endpoint returns immediately with `status="pending"`. The web frontend polls
 
 - [[feature-document-ingestion]] — broader pipeline
 - [[concept-ssrf-defense-url-ingestion]] — what the URL task re-validates per redirect hop
+- [[decision-blobstore-handoff]] — why the payload carries `blob_uri:`, not `temp_path:`

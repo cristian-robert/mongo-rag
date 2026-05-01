@@ -18,6 +18,11 @@ services:
       # apps/api/.env doesn't already set one.
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/mongorag}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # BlobStore: filesystem mode using a named volume shared with worker.
+      BLOB_STORE: fs
+      UPLOAD_TEMP_DIR: /workspace/.tmp/uploads
+    volumes:
+      - uploads:/workspace/.tmp/uploads
     depends_on:
       mongo:
         condition: service_healthy
@@ -40,6 +45,10 @@ services:
     environment:
       MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017/mongorag}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      BLOB_STORE: fs
+      UPLOAD_TEMP_DIR: /workspace/.tmp/uploads
+    volumes:
+      - uploads:/workspace/.tmp/uploads
     depends_on:
       api:
         condition: service_healthy
@@ -120,3 +129,4 @@ volumes:
   mongo-data:
   mongo-config:
   redis-data:
+  uploads:

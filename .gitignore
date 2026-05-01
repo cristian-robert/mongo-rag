@@ -52,3 +52,6 @@ Thumbs.db
 
 # Reference app (not part of monorepo)
 MongoDB-RAG-Agent-main/
+
+# BlobStore local-dev uploads
+.tmp/

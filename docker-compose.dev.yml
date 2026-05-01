@@ -31,6 +31,14 @@ services:
     environment:
       # Worker stays on the docker network — talks to redis by service name.
       REDIS_URL: redis://redis:6379/0
+      # BlobStore: filesystem mode shares uploads with the host API via
+      # the bind-mounted ./.tmp/uploads directory below.
+      BLOB_STORE: fs
+      UPLOAD_TEMP_DIR: /workspace/.tmp/uploads
+    volumes:
+      # Bind-mount host uploads dir so host API and container worker
+      # see the same physical bytes for file:///workspace/.tmp/uploads/* URIs.
+      - ./.tmp/uploads:/workspace/.tmp/uploads:rw
     depends_on:
       redis:
         condition: service_healthy

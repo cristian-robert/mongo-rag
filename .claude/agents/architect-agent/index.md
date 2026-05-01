@@ -1,6 +1,6 @@
 # MongoRAG Architecture Index
 
-_Last verified: 2026-04-30 (post-foundation-sprint coverage pass)_
+_Last verified: 2026-05-01 (post #79 BlobStore + Fly deploy)_
 
 ## Backend Layout (apps/api/src/)
 
@@ -14,7 +14,7 @@ _Last verified: 2026-04-30 (post-foundation-sprint coverage pass)_
 - `core/observability.py` — JSON log formatter, ContextVar-injected request_id/tenant_id/user_id, redaction, Sentry init
 - `core/request_logging.py` — `x-request-id` middleware, sanitized exception handlers
 - `core/dependencies.py`, `core/deps.py` — DI for DB connections, settings, agent deps
-- `core/settings.py` — Pydantic Settings (all env vars)
+- `core/settings.py` — Pydantic Settings (all env vars). Adds `BLOB_STORE` (`fs`|`supabase`), `SUPABASE_STORAGE_BUCKET` (default `mongorag-uploads`), `SUPABASE_S3_REGION`. `UPLOAD_TEMP_DIR` default changed to `./.tmp/uploads` (was under `/tmp/...`).
 
 ### Auth
 - `auth/api_keys.py` — `mrag_*` prefix + 48-byte body, **bcrypt (12 rounds)** hash. Postgres-default lookup; constant-time bcrypt over candidates; Mongo SHA-256 fallback when `API_KEY_BACKEND=mongo`
@@ -31,11 +31,12 @@ _Last verified: 2026-04-30 (post-foundation-sprint coverage pass)_
 - `eval/` — JSONL dataset, metrics (recall@k, MRR, nDCG@k, hit@k, substring_match), optional LLM judge, CLI runner with `--min-*` CI gates
 
 ### Ingestion (Celery + Redis)
-- `worker.py` — Celery app; `ingest_document` (3 retries, 10–90s backoff) + `ingest_url` (2 retries, 15–120s backoff); JSON serializer, `acks_late=true`, `prefetch=1`
+- `worker.py` — Celery app; `ingest_document` (3 retries, 10–90s backoff) + `ingest_url` (2 retries, 15–120s backoff); JSON serializer, `acks_late=true`, `prefetch=1`. Both tasks receive `blob_uri:` (never `temp_path:`); worker calls `_assert_tenant_owns_uri` before any `open()`, downloads blob to a local tmpfile, deletes blob on success or terminal failure (retained on retryable errors).
+- `services/blobstore/` — `BlobStore` Protocol (`put`/`get_stream`/`delete`/`signed_url`) + `FilesystemBlobStore` (`file://`) + `SupabaseBlobStore` (`supabase://`, S3-compatible, streaming) + factory (`get_blob_store()` reads `BLOB_STORE` env at startup) + URI helpers (`uri.py`, `_assert_tenant_owns_uri`). `signed_url` declared on the Protocol but unused by ingestion — see `[[decision-blobstore-handoff]]`.
 - `services/ingestion/chunker.py` — Docling HybridChunker (max 512 tokens), simple sliding-window fallback
 - `services/ingestion/embedder.py` — AsyncOpenAI, batch=100, `text-embedding-3-small` (1536-dim)
 - `services/ingestion/url_loader.py` — `validate_url` + `_resolve_and_check_host` SSRF defense (block-list of private/loopback/link-local/metadata IPs + explicit metadata host set, scheme allow-list `http`/`https`, MIME allow-list, size cap, redirect re-validation)
-- `services/ingestion/ingest.py` — pipeline orchestration
+- `services/ingestion/ingest.py` — pipeline orchestration. **Bug B fix (#79):** `read_document` and `_transcribe_audio` no longer return `[Error:…]` placeholder strings on Docling/audio failure — they raise so Celery's retry/terminal logic handles it.
 
 ### Billing (Postgres + Stripe)
 - `services/stripe_webhook.py` — `construct_event` (300s tolerance), `record_event` (`ON CONFLICT DO NOTHING RETURNING`), `process_event` (only side-effect path)
@@ -88,6 +89,8 @@ Dev-only widget integration test host. No auth, no Supabase, no shadcn. Loads `p
 ### Stack
 - shadcn/ui + Tailwind, React Hook Form + Zod, sonner, lucide-react
 - `next.config.ts` — `output: standalone`, CSP (allows Stripe, Supabase, FastAPI base URL; `frame-ancestors 'none'`), HSTS, X-Frame-Options
+- `apps/web/vercel.ts` — Vercel project config (build/install commands, framework, ignore steps)
+- `apps/web/middleware.ts` — CSP `connect-src` extended to include `https://mongorag-api.fly.dev` so the dashboard can reach the Fly-hosted API
 - Document upload: client → `/api/documents/upload` (Next route validates ext/MIME/size, mints token) → FastAPI `/api/v1/documents/ingest`
 
 ## Widget (packages/widget/)
@@ -139,6 +142,8 @@ RLS enabled on all tables; service-role bypasses. `current_tenant_id()` / `curre
 - **Outbound webhooks via `asyncio.create_task`** (MVP — abandoned on restart)
 - **Stripe `event.id` as Postgres PK** — natural idempotency
 - **Block-list SSRF defense** (private/metadata IPs blocked, not allow-listed)
+- **BlobStore URI handoff** — Celery payload carries `supabase://` or `file://` URI, never a filesystem path; see `[[decision-blobstore-handoff]]`
+- **Fly Machines deploy** — API (always-on, ≥1) + Worker (stop-on-idle, autostarts on dispatch) as two process groups from a single Dockerfile via `PROCESS_TYPE` env; see `[[decision-deploy-fly-vercel]]`
 
 ## Infra / CI
 
@@ -146,6 +151,9 @@ RLS enabled on all tables; service-role bypasses. `current_tenant_id()` / `curre
 - **CI** (`.github/workflows/ci.yml`): ruff/mypy/pytest unit, pnpm lint/tsc/build/test, opt-in Playwright e2e, Docker smoke build.
 - **Backups** (`.github/workflows/backup.yml`): daily 03:17 UTC; manual dispatch all/mongo/postgres; `scripts/backup/{mongo,postgres}_backup.sh` → S3.
 - **DR runbook:** `docs/disaster-recovery.md` (RPO/RTO targets, restore drills, scripts/backup/{mongo,postgres}_restore.sh).
+- **Fly:** `apps/api/fly.api.toml` (mongorag-api, shared-1cpu/512MB, `min_machines_running=1`, `auto_stop_machines="off"`) + `apps/api/fly.worker.toml` (mongorag-worker, shared-2cpu/1024MB, `auto_stop_machines="stop"`, `auto_start_machines=true`, `min_machines_running=0`). Both reference `Dockerfile` from the same dir; entrypoint branches on `PROCESS_TYPE`. Secrets pushed to both apps via `scripts/fly-secrets.sh` (sourced from `apps/api/.env`).
+- **Supabase Storage:** private bucket `mongorag-uploads` provisioned by `scripts/setup_supabase_storage.py`, 24h lifecycle policy as orphan safety net.
+- **Deploy runbook:** `docs/deploy.md`.
 
 ## Dockerfiles
 

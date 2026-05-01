@@ -6,14 +6,17 @@ from celery import Celery
 from celery.utils.log import get_task_logger
 
 from src.core.settings import load_settings
+from src.services.blobstore import BlobAccessError
 
-settings = load_settings()
-
-# Configure Celery
+# Configure Celery. Each task re-reads settings via load_settings() inside
+# `_run` so tests can monkeypatch env vars without also patching a
+# module-level cache. The single import-time read below is only used for
+# Celery's broker/backend wiring.
+_settings_at_import = load_settings()
 celery_app = Celery(
     "mongorag",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
+    broker=_settings_at_import.redis_url,
+    backend=_settings_at_import.redis_url,
 )
 
 celery_app.conf.update(
@@ -34,13 +37,13 @@ task_logger = get_task_logger(__name__)
     bind=True,
     name="mongorag.ingest_document",
     max_retries=3,
-    autoretry_for=(ConnectionError, OSError),
+    autoretry_for=(ConnectionError, OSError, BlobAccessError),
     retry_backoff=10,
     retry_backoff_max=90,
 )
 def ingest_document(
     self,
-    temp_path: str,
+    blob_uri: str,
     document_id: str,
     tenant_id: str,
     title: str,
@@ -49,29 +52,44 @@ def ingest_document(
 ) -> dict:
     """Process a document through the ingestion pipeline.
 
-    This task runs synchronously inside the Celery worker. It uses
-    asyncio.run() to execute the async pipeline methods.
+    Reads the blob via the configured BlobStore, streams it to a tempfile,
+    runs the existing pipeline, deletes the blob on success/terminal failure.
 
     Args:
-        temp_path: Path to the uploaded file in temp directory.
+        blob_uri: BlobStore URI (file://... or supabase://...). Must be tenant-prefixed.
         document_id: MongoDB document ID (created by the endpoint).
-        tenant_id: Tenant ID for isolation.
+        tenant_id: Tenant ID for isolation; verified against the blob URI prefix.
         title: Document title.
         source: Original filename.
         metadata: Optional metadata dict.
-
-    Returns:
-        Dict with document_id, status, chunk_count.
     """
     import asyncio
 
     async def _run() -> dict:
+        import tempfile
+
         from pymongo import AsyncMongoClient
 
         from src.models.document import DocumentModel, DocumentStatus
+        from src.services.blobstore import (
+            BlobAccessError,
+            BlobNotFoundError,
+            assert_tenant_owns_uri,
+            extract_extension,
+            get_blob_store,
+        )
         from src.services.ingestion.chunker import ChunkingConfig, create_chunker
         from src.services.ingestion.embedder import create_embedder
+        from src.services.ingestion.ingest import (
+            DocumentIngestionPipeline,
+            IngestionConfig,
+        )
         from src.services.ingestion.service import IngestionService
+
+        settings = load_settings()
+
+        # Security boundary: verify tenant ownership BEFORE any read.
+        assert_tenant_owns_uri(blob_uri, tenant_id)
 
         client = AsyncMongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
         db = client[settings.mongodb_database]
@@ -81,16 +99,54 @@ def ingest_document(
             chunks_collection=db[settings.mongodb_collection_chunks],
         )
 
+        blob_store = get_blob_store()
+        blob_size = 0
+        blob_read_failed = False
+        docling_failed = False
+        tmp_path: str | None = None
+        committed = False  # True after update_status(READY) lands
+        chunk_count: int = 0
+
         try:
-            # Update status to processing
             await service.update_status(document_id, tenant_id, DocumentStatus.PROCESSING)
 
-            # Read and convert document
-            from src.services.ingestion.ingest import DocumentIngestionPipeline, IngestionConfig
+            ext = extract_extension(blob_uri) or ".bin"
 
+            # Stream blob → tempfile (Docling needs a real path).
+            try:
+                with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as dst:
+                    tmp_path = dst.name
+                    async with blob_store.open(blob_uri) as stream:
+                        async for chunk in stream:
+                            dst.write(chunk)
+                            blob_size += len(chunk)
+            except BlobNotFoundError as e:
+                blob_read_failed = True
+                await service.update_status(
+                    document_id,
+                    tenant_id,
+                    DocumentStatus.FAILED,
+                    error_message=f"blob_not_found: {e}",
+                )
+                # Terminal — delete the (already-missing) blob and surface as success-no-retry.
+                await _safe_delete(blob_store, blob_uri)
+                return {"document_id": document_id, "status": "failed", "chunk_count": 0}
+            except BlobAccessError:
+                blob_read_failed = True
+                # Retryable — autoretry_for catches this and Celery schedules a retry.
+                raise
+
+            # Existing pipeline.
             config = IngestionConfig()
-            pipeline = DocumentIngestionPipeline(config=config, tenant_id=tenant_id)
-            content, docling_doc = pipeline.read_document(temp_path)
+            pipeline = DocumentIngestionPipeline(
+                config=config, tenant_id=tenant_id, clean_before_ingest=False
+            )
+
+            try:
+                content, docling_doc = pipeline.read_document(tmp_path)
+            except Exception:
+                docling_failed = True
+                raise
 
             if not content.strip():
                 await service.update_status(
@@ -99,21 +155,20 @@ def ingest_document(
                     DocumentStatus.FAILED,
                     error_message="Document is empty or could not be parsed",
                 )
+                await _safe_delete(blob_store, blob_uri)
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
 
-            # Generate content hash
             content_hash = DocumentModel.hash_content(content)
 
-            # Check for duplicate
             existing_doc = await service.check_duplicate(tenant_id, source, content_hash)
             if existing_doc:
-                # Delete the new pending document — reuse existing
                 await service.update_status(
                     document_id,
                     tenant_id,
                     DocumentStatus.FAILED,
                     error_message="Duplicate of existing document",
                 )
+                await _safe_delete(blob_store, blob_uri)
                 existing_id = str(existing_doc["_id"])
                 existing_chunks = existing_doc.get("chunk_count", 0)
                 task_logger.info(
@@ -127,14 +182,10 @@ def ingest_document(
                     "chunk_count": existing_chunks,
                 }
 
-            # Determine version
             latest_version = await service.get_latest_version(tenant_id, source)
             version = latest_version + 1
+            resolved_title = title if title else pipeline.extract_title(content, tmp_path)
 
-            # Extract title if not provided
-            resolved_title = title if title else pipeline.extract_title(content, temp_path)
-
-            # Chunk document
             chunker = create_chunker(ChunkingConfig(max_tokens=config.max_tokens))
             chunks = await chunker.chunk_document(
                 content=content,
@@ -151,13 +202,12 @@ def ingest_document(
                     DocumentStatus.FAILED,
                     error_message="No chunks created from document",
                 )
+                await _safe_delete(blob_store, blob_uri)
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
 
-            # Embed chunks
             embedder = create_embedder()
             embedded_chunks = await embedder.embed_chunks(chunks)
 
-            # Store chunks with tenant isolation
             chunk_count = await service.store_chunks(
                 chunks=embedded_chunks,
                 document_id=document_id,
@@ -167,7 +217,6 @@ def ingest_document(
                 embedding_model=settings.embedding_model,
             )
 
-            # Update document to ready
             await service.update_status(
                 document_id,
                 tenant_id,
@@ -177,12 +226,21 @@ def ingest_document(
                 version=version,
                 content=content,
             )
+            committed = True
 
-            task_logger.info(
-                "Ingestion complete: doc=%s, tenant=%s, chunks=%d",
-                document_id,
-                tenant_id,
-                chunk_count,
+            # Success — delete blob (lifecycle rule is the safety net if this fails).
+            await _safe_delete(blob_store, blob_uri)
+
+            _emit_ingestion_complete(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                blob_uri=blob_uri,
+                blob_size_bytes=blob_size,
+                status="ready",
+                chunks=chunk_count,
+                blob_read_failed=False,
+                docling_failed=False,
+                source_kind="upload",
             )
 
             return {
@@ -192,9 +250,50 @@ def ingest_document(
             }
 
         except Exception as e:
+            if committed:
+                # Intentionally swallow post-commit exceptions into a warning
+                # rather than raising: the doc is already READY in Mongo, and
+                # propagating would trigger Celery autoretry which would re-run
+                # the whole pipeline against an already-committed document.
+                # The warning gives observability without the state churn.
+                # Note: this dilutes Task 8's "fail loud" intent for code paths
+                # that run after commit (e.g. _safe_delete, post-success
+                # logging) — accepted tradeoff to avoid retry-storms on
+                # already-successful work. See Task 5 (commit 75cecfb) and
+                # Task 8 (commit 778b8ea).
+                task_logger.warning(
+                    "post_success_exception",
+                    extra={
+                        "document_id": document_id,
+                        "tenant_id": tenant_id,
+                        "exc": type(e).__name__,
+                        "msg": str(e)[:200],
+                    },
+                )
+                return {
+                    "document_id": document_id,
+                    "status": "ready",
+                    "chunk_count": chunk_count,
+                }
+
+            # Retryable + retries remaining: Celery autoretry will pick this up.
+            # Do NOT flip the doc to FAILED, do NOT delete the blob, do NOT
+            # emit ingestion_complete — otherwise the dashboard sees a
+            # transient FAILED → READY flap when the retry succeeds.
+            if _will_celery_retry(self, e):
+                task_logger.warning(
+                    "retryable_exception_letting_celery_retry",
+                    extra={
+                        "document_id": document_id,
+                        "tenant_id": tenant_id,
+                        "exc": type(e).__name__,
+                        "retries": self.request.retries,
+                        "max_retries": self.max_retries,
+                    },
+                )
+                raise
+
             task_logger.exception("Ingestion failed: doc=%s, error=%s", document_id, str(e))
-            # Sanitize error message — never persist raw exception strings
-            # which may contain connection strings or API keys
             safe_error = type(e).__name__
             if isinstance(e, (ValueError, TypeError, FileNotFoundError)):
                 safe_error = f"{type(e).__name__}: {str(e)}"
@@ -207,17 +306,32 @@ def ingest_document(
                 )
             except Exception:
                 task_logger.exception("Failed to update status after error")
-            raise  # Let Celery retry if applicable
+
+            _emit_ingestion_complete(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                blob_uri=blob_uri,
+                blob_size_bytes=blob_size,
+                status="failed",
+                chunks=0,
+                blob_read_failed=blob_read_failed,
+                docling_failed=docling_failed,
+                source_kind="upload",
+            )
+
+            # Terminal-after-retries cleanup (helper at module level).
+            if _is_terminal_failure(self, e):
+                await _safe_delete(blob_store, blob_uri)
+
+            raise
 
         finally:
             await client.close()
-            # Clean up temp file and its UUID parent directory
-            import shutil
-
-            temp_dir = os.path.dirname(temp_path)
-            if os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir, ignore_errors=True)
-                task_logger.info("Cleaned up temp dir: %s", temp_dir)
+            if tmp_path and os.path.exists(tmp_path):
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
 
     return asyncio.run(_run())
 
@@ -226,7 +340,7 @@ def ingest_document(
     bind=True,
     name="mongorag.ingest_url",
     max_retries=2,
-    autoretry_for=(ConnectionError,),
+    autoretry_for=(ConnectionError, BlobAccessError),
     retry_backoff=15,
     retry_backoff_max=120,
 )
@@ -256,12 +370,14 @@ def ingest_url(
     import asyncio
 
     async def _run() -> dict:
+        import io
         import os
         import tempfile
 
         from pymongo import AsyncMongoClient
 
         from src.models.document import DocumentModel, DocumentStatus
+        from src.services.blobstore import get_blob_store
         from src.services.ingestion.chunker import ChunkingConfig, create_chunker
         from src.services.ingestion.embedder import create_embedder
         from src.services.ingestion.ingest import DocumentIngestionPipeline, IngestionConfig
@@ -273,6 +389,8 @@ def ingest_url(
             html_to_markdown,
         )
 
+        settings = load_settings()
+
         client = AsyncMongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
         db = client[settings.mongodb_database]
         service = IngestionService(
@@ -280,6 +398,12 @@ def ingest_url(
             chunks_collection=db[settings.mongodb_collection_chunks],
         )
 
+        blob_uri: str | None = None
+        blob_store = None
+        blob_size: int = 0
+        docling_failed = False
+        committed = False  # True after update_status(READY) lands
+        chunk_count: int = 0
         temp_dir = tempfile.mkdtemp(prefix="mongorag-url-")
         try:
             await service.update_status(document_id, tenant_id, DocumentStatus.PROCESSING)
@@ -293,6 +417,17 @@ def ingest_url(
                     DocumentStatus.FAILED,
                     error_message=f"URL rejected: {e}",
                 )
+                _emit_ingestion_complete(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    blob_uri=None,
+                    blob_size_bytes=0,
+                    status="failed",
+                    chunks=0,
+                    blob_read_failed=False,
+                    docling_failed=False,
+                    source_kind="url",
+                )
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
             except URLFetchError as e:
                 await service.update_status(
@@ -300,6 +435,20 @@ def ingest_url(
                     tenant_id,
                     DocumentStatus.FAILED,
                     error_message=f"Fetch failed: {e}",
+                )
+                # No blob exists yet — fetch failed before put(). blob_read_failed
+                # specifically signals a BlobStore read failure and would skew
+                # ops dashboards if reused for upstream URL-fetch failures.
+                _emit_ingestion_complete(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    blob_uri=None,
+                    blob_size_bytes=0,
+                    status="failed",
+                    chunks=0,
+                    blob_read_failed=False,
+                    docling_failed=False,
+                    source_kind="url",
                 )
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
 
@@ -321,9 +470,17 @@ def ingest_url(
                 _xlsx: ".xlsx",
             }
             ext = mime_to_ext.get(fetched.content_type, ".bin")
+            blob_store = get_blob_store()
+            key = f"{tenant_id}/{document_id}/url-fetch{ext}"
+            blob_uri = await blob_store.put(key, io.BytesIO(fetched.content), fetched.content_type)
+            blob_size = len(fetched.content)
+
+            # Stream back to a tempfile in the worker — same hot path as ingest_document.
             temp_path = os.path.join(temp_dir, f"document{ext}")
-            with open(temp_path, "wb") as f:
-                f.write(fetched.content)
+            async with blob_store.open(blob_uri) as stream:
+                with open(temp_path, "wb") as f:
+                    async for chunk in stream:
+                        f.write(chunk)
 
             config = IngestionConfig()
             pipeline = DocumentIngestionPipeline(config=config, tenant_id=tenant_id)
@@ -333,6 +490,7 @@ def ingest_url(
             try:
                 content, docling_doc = pipeline.read_document(temp_path)
             except Exception as docling_err:  # noqa: BLE001
+                docling_failed = True
                 task_logger.warning(
                     "Docling failed for URL ingestion (doc=%s): %s — falling back",
                     document_id,
@@ -353,6 +511,19 @@ def ingest_url(
                     DocumentStatus.FAILED,
                     error_message="Could not extract text from URL",
                 )
+                if blob_store is not None and blob_uri is not None:
+                    await _safe_delete(blob_store, blob_uri)
+                _emit_ingestion_complete(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    blob_uri=blob_uri,
+                    blob_size_bytes=blob_size,
+                    status="failed",
+                    chunks=0,
+                    blob_read_failed=False,
+                    docling_failed=docling_failed,
+                    source_kind="url",
+                )
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
 
             content_hash = DocumentModel.hash_content(content)
@@ -366,11 +537,25 @@ def ingest_url(
                     DocumentStatus.FAILED,
                     error_message="Duplicate of existing document",
                 )
+                if blob_store is not None and blob_uri is not None:
+                    await _safe_delete(blob_store, blob_uri)
                 existing_id = str(existing_doc["_id"])
+                existing_chunks = existing_doc.get("chunk_count", 0)
+                _emit_ingestion_complete(
+                    document_id=existing_id,
+                    tenant_id=tenant_id,
+                    blob_uri=blob_uri,
+                    blob_size_bytes=blob_size,
+                    status="ready",
+                    chunks=existing_chunks,
+                    blob_read_failed=False,
+                    docling_failed=docling_failed,
+                    source_kind="url",
+                )
                 return {
                     "document_id": existing_id,
                     "status": "ready",
-                    "chunk_count": existing_doc.get("chunk_count", 0),
+                    "chunk_count": existing_chunks,
                 }
 
             latest_version = await service.get_latest_version(tenant_id, source)
@@ -402,6 +587,19 @@ def ingest_url(
                     DocumentStatus.FAILED,
                     error_message="No chunks created from URL",
                 )
+                if blob_store is not None and blob_uri is not None:
+                    await _safe_delete(blob_store, blob_uri)
+                _emit_ingestion_complete(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    blob_uri=blob_uri,
+                    blob_size_bytes=blob_size,
+                    status="failed",
+                    chunks=0,
+                    blob_read_failed=False,
+                    docling_failed=docling_failed,
+                    source_kind="url",
+                )
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
 
             embedder = create_embedder()
@@ -425,13 +623,21 @@ def ingest_url(
                 version=version,
                 content=content,
             )
+            committed = True
 
-            task_logger.info(
-                "URL ingestion complete: doc=%s tenant=%s url=%s chunks=%d",
-                document_id,
-                tenant_id,
-                source,
-                chunk_count,
+            # Success — delete blob (lifecycle rule is the safety net if this fails).
+            await _safe_delete(blob_store, blob_uri)
+
+            _emit_ingestion_complete(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                blob_uri=blob_uri,
+                blob_size_bytes=blob_size,
+                status="ready",
+                chunks=chunk_count,
+                blob_read_failed=False,
+                docling_failed=docling_failed,
+                source_kind="url",
             )
             return {
                 "document_id": document_id,
@@ -440,6 +646,49 @@ def ingest_url(
             }
 
         except Exception as e:
+            if committed:
+                # Intentionally swallow post-commit exceptions into a warning
+                # rather than raising: the doc is already READY in Mongo, and
+                # propagating would trigger Celery autoretry which would re-run
+                # the whole pipeline against an already-committed document.
+                # The warning gives observability without the state churn.
+                # Note: this dilutes Task 8's "fail loud" intent for code paths
+                # that run after commit (e.g. _safe_delete, post-success
+                # logging) — accepted tradeoff to avoid retry-storms on
+                # already-successful work. See Task 5 (commit 75cecfb) and
+                # Task 8 (commit 778b8ea).
+                task_logger.warning(
+                    "post_success_exception",
+                    extra={
+                        "document_id": document_id,
+                        "tenant_id": tenant_id,
+                        "exc": type(e).__name__,
+                        "msg": str(e)[:200],
+                    },
+                )
+                return {
+                    "document_id": document_id,
+                    "status": "ready",
+                    "chunk_count": chunk_count,
+                }
+
+            # Retryable + retries remaining: Celery autoretry will pick this up.
+            # Keep the blob (retry can re-stream instead of re-fetching), keep
+            # the doc in PROCESSING, and skip the ingestion_complete emit so
+            # dashboards don't see a transient FAILED → READY flap.
+            if _will_celery_retry(self, e):
+                task_logger.warning(
+                    "retryable_exception_letting_celery_retry",
+                    extra={
+                        "document_id": document_id,
+                        "tenant_id": tenant_id,
+                        "exc": type(e).__name__,
+                        "retries": self.request.retries,
+                        "max_retries": self.max_retries,
+                    },
+                )
+                raise
+
             task_logger.exception("URL ingestion failed: doc=%s err=%s", document_id, e)
             safe_error = type(e).__name__
             try:
@@ -451,6 +700,27 @@ def ingest_url(
                 )
             except Exception:
                 task_logger.exception("Failed to update status after error")
+
+            # Reflect actual exception type: a BlobAccessError raised during
+            # blob_store.put() / open() means the dashboard should classify
+            # this as a blob-side failure. Hard-coding False would mis-bucket
+            # transient Storage 5xx into "non-blob errors".
+            _emit_ingestion_complete(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                blob_uri=blob_uri,
+                blob_size_bytes=blob_size,
+                status="failed",
+                chunks=0,
+                blob_read_failed=isinstance(e, BlobAccessError),
+                docling_failed=docling_failed,
+                source_kind="url",
+            )
+
+            # Terminal-after-retries cleanup. Transient retryable errors keep the
+            # blob so the retry can re-stream from it instead of re-fetching the URL.
+            if blob_store is not None and blob_uri is not None and _is_terminal_failure(self, e):
+                await _safe_delete(blob_store, blob_uri)
             raise
         finally:
             await client.close()
@@ -460,3 +730,66 @@ def ingest_url(
                 _shutil.rmtree(temp_dir, ignore_errors=True)
 
     return asyncio.run(_run())
+
+
+async def _safe_delete(blob_store, blob_uri: str) -> None:
+    """Delete with logged-but-swallowed BlobStoreError. ValueError propagates."""
+    from src.services.blobstore import BlobStoreError
+
+    try:
+        await blob_store.delete(blob_uri)
+    except BlobStoreError as e:
+        task_logger.warning("blob_delete_failed: uri=%s err=%s", blob_uri, e)
+    # Programming errors (ValueError from URI parsing, AttributeError, etc.)
+    # propagate — they indicate a bug, not a transient infra issue.
+
+
+def _emit_ingestion_complete(
+    *,
+    document_id: str,
+    tenant_id: str,
+    blob_uri: str | None,
+    blob_size_bytes: int,
+    status: str,
+    chunks: int,
+    blob_read_failed: bool,
+    docling_failed: bool,
+    source_kind: str,  # "upload" or "url"
+) -> None:
+    """Single shape for the structured ingestion-outcome log line."""
+    task_logger.info(
+        "ingestion_complete",
+        extra={
+            "document_id": document_id,
+            "tenant_id": tenant_id,
+            "blob_uri": blob_uri,
+            "blob_size_bytes": blob_size_bytes,
+            "status": status,
+            "chunks": chunks,
+            "blob_read_failed": blob_read_failed,
+            "docling_failed": docling_failed,
+            "source_kind": source_kind,
+        },
+    )
+
+
+def _is_terminal_failure(task, exc: Exception) -> bool:
+    """Returns True if this is the last attempt (no more retries) or a non-retryable exc."""
+    from src.services.blobstore import BlobNotFoundError, TenantOwnershipError
+
+    if isinstance(exc, (BlobNotFoundError, TenantOwnershipError, ValueError, TypeError)):
+        return True
+    return task.request.retries >= task.max_retries
+
+
+def _will_celery_retry(task, exc: Exception) -> bool:
+    """True iff Celery's ``autoretry_for`` will pick up this exception and retries remain.
+
+    Used to decide whether to mutate doc state on the way out of the worker:
+    if Celery is going to retry, we must NOT flip the doc to FAILED — otherwise
+    the dashboard sees a transient FAILED → READY flap on the retry.
+    """
+    autoretry_for = getattr(task, "autoretry_for", ()) or ()
+    if not isinstance(exc, tuple(autoretry_for)):
+        return False
+    return task.request.retries < task.max_retries
