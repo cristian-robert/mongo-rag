@@ -224,18 +224,16 @@ def ingest_document(
             # Success — delete blob (lifecycle rule is the safety net if this fails).
             await _safe_delete(blob_store, blob_uri)
 
-            task_logger.info(
-                "ingestion_complete",
-                extra={
-                    "document_id": document_id,
-                    "tenant_id": tenant_id,
-                    "blob_uri": blob_uri,
-                    "blob_size_bytes": blob_size,
-                    "status": "ready",
-                    "chunks": chunk_count,
-                    "blob_read_failed": False,
-                    "docling_failed": False,
-                },
+            _emit_ingestion_complete(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                blob_uri=blob_uri,
+                blob_size_bytes=blob_size,
+                status="ready",
+                chunks=chunk_count,
+                blob_read_failed=False,
+                docling_failed=False,
+                source_kind="upload",
             )
 
             return {
@@ -259,18 +257,16 @@ def ingest_document(
             except Exception:
                 task_logger.exception("Failed to update status after error")
 
-            task_logger.info(
-                "ingestion_complete",
-                extra={
-                    "document_id": document_id,
-                    "tenant_id": tenant_id,
-                    "blob_uri": blob_uri,
-                    "blob_size_bytes": blob_size,
-                    "status": "failed",
-                    "chunks": 0,
-                    "blob_read_failed": blob_read_failed,
-                    "docling_failed": docling_failed,
-                },
+            _emit_ingestion_complete(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                blob_uri=blob_uri,
+                blob_size_bytes=blob_size,
+                status="failed",
+                chunks=0,
+                blob_read_failed=blob_read_failed,
+                docling_failed=docling_failed,
+                source_kind="upload",
             )
 
             # Terminal-after-retries cleanup (helper at module level).
@@ -352,6 +348,8 @@ def ingest_url(
 
         blob_uri: str | None = None
         blob_store = None
+        blob_size: int = 0
+        docling_failed = False
         temp_dir = tempfile.mkdtemp(prefix="mongorag-url-")
         try:
             await service.update_status(document_id, tenant_id, DocumentStatus.PROCESSING)
@@ -365,6 +363,17 @@ def ingest_url(
                     DocumentStatus.FAILED,
                     error_message=f"URL rejected: {e}",
                 )
+                _emit_ingestion_complete(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    blob_uri=None,
+                    blob_size_bytes=0,
+                    status="failed",
+                    chunks=0,
+                    blob_read_failed=False,
+                    docling_failed=False,
+                    source_kind="url",
+                )
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
             except URLFetchError as e:
                 await service.update_status(
@@ -372,6 +381,17 @@ def ingest_url(
                     tenant_id,
                     DocumentStatus.FAILED,
                     error_message=f"Fetch failed: {e}",
+                )
+                _emit_ingestion_complete(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    blob_uri=None,
+                    blob_size_bytes=0,
+                    status="failed",
+                    chunks=0,
+                    blob_read_failed=True,
+                    docling_failed=False,
+                    source_kind="url",
                 )
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
 
@@ -396,6 +416,7 @@ def ingest_url(
             blob_store = get_blob_store()
             key = f"{tenant_id}/{document_id}/url-fetch{ext}"
             blob_uri = await blob_store.put(key, io.BytesIO(fetched.content), fetched.content_type)
+            blob_size = len(fetched.content)
 
             # Stream back to a tempfile in the worker — same hot path as ingest_document.
             temp_path = os.path.join(temp_dir, f"document{ext}")
@@ -412,6 +433,7 @@ def ingest_url(
             try:
                 content, docling_doc = pipeline.read_document(temp_path)
             except Exception as docling_err:  # noqa: BLE001
+                docling_failed = True
                 task_logger.warning(
                     "Docling failed for URL ingestion (doc=%s): %s — falling back",
                     document_id,
@@ -434,6 +456,17 @@ def ingest_url(
                 )
                 if blob_store is not None and blob_uri is not None:
                     await _safe_delete(blob_store, blob_uri)
+                _emit_ingestion_complete(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    blob_uri=blob_uri,
+                    blob_size_bytes=blob_size,
+                    status="failed",
+                    chunks=0,
+                    blob_read_failed=False,
+                    docling_failed=docling_failed,
+                    source_kind="url",
+                )
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
 
             content_hash = DocumentModel.hash_content(content)
@@ -450,10 +483,22 @@ def ingest_url(
                 if blob_store is not None and blob_uri is not None:
                     await _safe_delete(blob_store, blob_uri)
                 existing_id = str(existing_doc["_id"])
+                existing_chunks = existing_doc.get("chunk_count", 0)
+                _emit_ingestion_complete(
+                    document_id=existing_id,
+                    tenant_id=tenant_id,
+                    blob_uri=blob_uri,
+                    blob_size_bytes=blob_size,
+                    status="ready",
+                    chunks=existing_chunks,
+                    blob_read_failed=False,
+                    docling_failed=docling_failed,
+                    source_kind="url",
+                )
                 return {
                     "document_id": existing_id,
                     "status": "ready",
-                    "chunk_count": existing_doc.get("chunk_count", 0),
+                    "chunk_count": existing_chunks,
                 }
 
             latest_version = await service.get_latest_version(tenant_id, source)
@@ -487,6 +532,17 @@ def ingest_url(
                 )
                 if blob_store is not None and blob_uri is not None:
                     await _safe_delete(blob_store, blob_uri)
+                _emit_ingestion_complete(
+                    document_id=document_id,
+                    tenant_id=tenant_id,
+                    blob_uri=blob_uri,
+                    blob_size_bytes=blob_size,
+                    status="failed",
+                    chunks=0,
+                    blob_read_failed=False,
+                    docling_failed=docling_failed,
+                    source_kind="url",
+                )
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
 
             embedder = create_embedder()
@@ -514,12 +570,16 @@ def ingest_url(
             # Success — delete blob (lifecycle rule is the safety net if this fails).
             await _safe_delete(blob_store, blob_uri)
 
-            task_logger.info(
-                "URL ingestion complete: doc=%s tenant=%s url=%s chunks=%d",
-                document_id,
-                tenant_id,
-                source,
-                chunk_count,
+            _emit_ingestion_complete(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                blob_uri=blob_uri,
+                blob_size_bytes=blob_size,
+                status="ready",
+                chunks=chunk_count,
+                blob_read_failed=False,
+                docling_failed=docling_failed,
+                source_kind="url",
             )
             return {
                 "document_id": document_id,
@@ -539,6 +599,18 @@ def ingest_url(
                 )
             except Exception:
                 task_logger.exception("Failed to update status after error")
+
+            _emit_ingestion_complete(
+                document_id=document_id,
+                tenant_id=tenant_id,
+                blob_uri=blob_uri,
+                blob_size_bytes=blob_size,
+                status="failed",
+                chunks=0,
+                blob_read_failed=False,
+                docling_failed=docling_failed,
+                source_kind="url",
+            )
 
             # Terminal-after-retries cleanup. Transient retryable errors keep the
             # blob so the retry can re-stream from it instead of re-fetching the URL.
@@ -565,6 +637,35 @@ async def _safe_delete(blob_store, blob_uri: str) -> None:
         task_logger.warning("blob_delete_failed: uri=%s err=%s", blob_uri, e)
     # Programming errors (ValueError from URI parsing, AttributeError, etc.)
     # propagate — they indicate a bug, not a transient infra issue.
+
+
+def _emit_ingestion_complete(
+    *,
+    document_id: str,
+    tenant_id: str,
+    blob_uri: str | None,
+    blob_size_bytes: int,
+    status: str,
+    chunks: int,
+    blob_read_failed: bool,
+    docling_failed: bool,
+    source_kind: str,  # "upload" or "url"
+) -> None:
+    """Single shape for the structured ingestion-outcome log line."""
+    task_logger.info(
+        "ingestion_complete",
+        extra={
+            "document_id": document_id,
+            "tenant_id": tenant_id,
+            "blob_uri": blob_uri,
+            "blob_size_bytes": blob_size_bytes,
+            "status": status,
+            "chunks": chunks,
+            "blob_read_failed": blob_read_failed,
+            "docling_failed": docling_failed,
+            "source_kind": source_kind,
+        },
+    )
 
 
 def _is_terminal_failure(task, exc: Exception) -> bool:
