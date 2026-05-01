@@ -1,11 +1,14 @@
 # Tag Registry
 
-_Last updated: 2026-05-01_
+_Last updated: 2026-05-02_
 
 | Tag | Count | Articles |
 |-----|-------|----------|
 | feature | 12 | [[feature-rag-agent]], [[feature-document-ingestion]], [[feature-rag-pipeline-enhancements]], [[feature-rag-eval-harness]], [[feature-api-key-management]], [[feature-stripe-billing]], [[feature-usage-metering-rate-limiting]], [[feature-embeddable-widget]], [[feature-outbound-webhooks]], [[feature-team-management-rbac]], [[feature-bot-configuration]], [[feature-analytics-dashboard]] |
-| concept | 8 | [[hybrid-rrf-search]], [[multi-tenancy-tenant-isolation]], [[concept-principal-tenant-isolation]], [[concept-stripe-webhook-idempotency]], [[concept-ssrf-defense-url-ingestion]], [[concept-celery-ingestion-worker]], [[concept-rate-limiting-fixed-window]], [[concept-observability-stack]] |
+| concept | 9 | [[hybrid-rrf-search]], [[multi-tenancy-tenant-isolation]], [[concept-principal-tenant-isolation]], [[concept-stripe-webhook-idempotency]], [[concept-ssrf-defense-url-ingestion]], [[concept-celery-ingestion-worker]], [[concept-rate-limiting-fixed-window]], [[concept-observability-stack]], [[concept-subagent-driven-execution-gotchas]] |
+| subagents | 1 | [[concept-subagent-driven-execution-gotchas]] |
+| workflow | 1 | [[concept-subagent-driven-execution-gotchas]] |
+| development | 1 | [[concept-subagent-driven-execution-gotchas]] |
 | decision | 5 | [[decision-pydantic-ai-over-langchain]], [[decision-postgres-mongo-storage-split]], [[decision-supabase-auth-over-nextauth]], [[decision-blobstore-handoff]], [[decision-deploy-fly-vercel]] |
 | security | 6 | [[multi-tenancy-tenant-isolation]], [[feature-api-key-management]], [[concept-principal-tenant-isolation]], [[concept-ssrf-defense-url-ingestion]], [[concept-stripe-webhook-idempotency]], [[feature-outbound-webhooks]] |
 | rag | 5 | [[feature-rag-agent]], [[feature-document-ingestion]], [[feature-rag-pipeline-enhancements]], [[feature-rag-eval-harness]], [[hybrid-rrf-search]] |

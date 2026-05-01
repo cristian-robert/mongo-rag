@@ -1,5 +1,5 @@
 {
-  "generated": "2026-04-30T23:37:02.482Z",
+  "generated": "2026-05-01T23:01:24.576Z",
   "docs": [
     {
       "file": "concept-celery-ingestion-worker.md",
@@ -79,6 +79,18 @@
         "postgres"
       ],
       "summary": "Stripe delivers webhook events at-least-once."
+    },
+    {
+      "file": "concept-subagent-driven-execution-gotchas.md",
+      "title": "\"Subagent-driven execution gotchas\"",
+      "type": "concept",
+      "tags": [
+        "concept",
+        "subagents",
+        "workflow",
+        "development"
+      ],
+      "summary": "Three recurring failure modes when dispatching subagents to execute multi-task plans."
     },
     {
       "file": "decision-blobstore-handoff.md",

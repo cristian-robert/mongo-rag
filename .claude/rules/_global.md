@@ -36,6 +36,7 @@ When the project's CLAUDE.md has a `## Knowledge Base` section with a `Path:` va
 - Plans are mandatory for L/XL tasks — run `/plan-feature` first
 - Run `/validate` before claiming work is done
 - Run `/evolve` after merging to keep the system improving
+- When dispatching subagents to execute multi-task plans, include the boilerplate guards from `[[concept-subagent-driven-execution-gotchas]]` (direct-git fallback for commits, `cd` reset before commits, `tee` instead of `tail` for monitorable output)
 
 ## Rule File Budget
 

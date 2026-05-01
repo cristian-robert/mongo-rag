@@ -1,6 +1,6 @@
 # Wiki Index
 
-_Last updated: 2026-05-01 — 26 articles_
+_Last updated: 2026-05-02 — 27 articles_
 
 ## Concepts
 
@@ -12,6 +12,7 @@ _Last updated: 2026-05-01 — 26 articles_
 - [[concept-celery-ingestion-worker]] — Celery + Redis ingestion tasks; JSON serializer; retry policies
 - [[concept-rate-limiting-fixed-window]] — Fixed-window limiter with Redis backend; rollback on rejection
 - [[concept-observability-stack]] — JSON logs, ContextVars, redaction, Sentry, x-request-id, /health vs /ready
+- [[concept-subagent-driven-execution-gotchas]] — `commit-commands:commit` skill broken in subagents, CWD drift, `tail` output buffering
 
 ## Features
 
