@@ -701,6 +701,10 @@ def ingest_url(
             except Exception:
                 task_logger.exception("Failed to update status after error")
 
+            # Reflect actual exception type: a BlobAccessError raised during
+            # blob_store.put() / open() means the dashboard should classify
+            # this as a blob-side failure. Hard-coding False would mis-bucket
+            # transient Storage 5xx into "non-blob errors".
             _emit_ingestion_complete(
                 document_id=document_id,
                 tenant_id=tenant_id,
@@ -708,7 +712,7 @@ def ingest_url(
                 blob_size_bytes=blob_size,
                 status="failed",
                 chunks=0,
-                blob_read_failed=False,
+                blob_read_failed=isinstance(e, BlobAccessError),
                 docling_failed=docling_failed,
                 source_kind="url",
             )

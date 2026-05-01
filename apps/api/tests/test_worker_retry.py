@@ -156,6 +156,75 @@ def test_will_celery_retry_returns_false_for_non_retryable_exception():
     assert _will_celery_retry(fake_task, ValueError("bad input")) is False
 
 
+def test_url_blob_access_error_emits_blob_read_failed_true_on_terminal():
+    """A BlobAccessError raised during the URL-path blob put/open phase must
+    surface as blob_read_failed=True on the terminal (retries-exhausted)
+    ingestion_complete emit — otherwise the dashboard mis-classifies the
+    failure as non-blob.
+    """
+    from src.services.ingestion.url_loader import FetchedURL
+    from src.worker import ingest_url
+
+    fake_client = MagicMock()
+    fake_client.close = AsyncMock(return_value=None)
+    fake_db = MagicMock()
+    fake_client.__getitem__.return_value = fake_db
+    fake_db.__getitem__.return_value = MagicMock()
+
+    fake_service = MagicMock()
+    fake_service.update_status = AsyncMock(return_value=None)
+
+    # fetch_url succeeds — failure is downstream at blob_store.put().
+    fake_fetched = FetchedURL(
+        url="https://example.com/page",
+        final_url="https://example.com/page",
+        content=b"<html><body>hi</body></html>",
+        content_type="text/html",
+        charset="utf-8",
+    )
+
+    # BlobStore whose .put() raises BlobAccessError (transient upstream 5xx).
+    fake_blob_store = MagicMock()
+    fake_blob_store.put = AsyncMock(side_effect=BlobAccessError("transient 503 from Storage"))
+
+    with (
+        patch("pymongo.AsyncMongoClient", return_value=fake_client),
+        patch("src.services.ingestion.service.IngestionService", return_value=fake_service),
+        patch(
+            "src.services.ingestion.url_loader.fetch_url",
+            new=AsyncMock(return_value=fake_fetched),
+        ),
+        patch("src.services.blobstore.get_blob_store", return_value=fake_blob_store),
+        patch("src.worker._emit_ingestion_complete") as mock_emit,
+        patch("src.worker._safe_delete", new=AsyncMock(return_value=None)),
+    ):
+        result = ingest_url.apply(
+            kwargs={
+                "url": "https://example.com/page",
+                "document_id": "doc-url-blob-fail",
+                "tenant_id": "t1",
+            },
+            throw=False,
+        )
+
+    # autoretry exhausts → final attempt re-raises BlobAccessError.
+    assert result.failed()
+    assert isinstance(result.result, BlobAccessError)
+
+    # Exactly one emit (final terminal attempt) — and it must reflect the blob failure.
+    assert mock_emit.call_count == 1, (
+        f"ingestion_complete must only emit on terminal attempt; got {mock_emit.call_count}"
+    )
+    kwargs = mock_emit.call_args.kwargs
+    assert kwargs["blob_read_failed"] is True, (
+        "BlobAccessError raised during the URL-path blob put/open phase must "
+        "set blob_read_failed=True so dashboards classify the failure correctly. "
+        f"got kwargs={kwargs!r}"
+    )
+    assert kwargs["status"] == "failed"
+    assert kwargs["source_kind"] == "url"
+
+
 def test_blob_access_error_during_open_keeps_doc_in_processing_until_retries_exhausted():
     """A retryable BlobAccessError during streaming must NOT flip doc → FAILED on each retry.
 
