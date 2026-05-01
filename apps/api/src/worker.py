@@ -6,6 +6,7 @@ from celery import Celery
 from celery.utils.log import get_task_logger
 
 from src.core.settings import load_settings
+from src.services.blobstore import BlobAccessError
 
 settings = load_settings()
 
@@ -34,7 +35,7 @@ task_logger = get_task_logger(__name__)
     bind=True,
     name="mongorag.ingest_document",
     max_retries=3,
-    autoretry_for=(ConnectionError, OSError),
+    autoretry_for=(ConnectionError, OSError, BlobAccessError),
     retry_backoff=10,
     retry_backoff_max=90,
 )
@@ -126,7 +127,7 @@ def ingest_document(
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
             except BlobAccessError:
                 blob_read_failed = True
-                # Retryable — re-raise so Celery's autoretry kicks in.
+                # Retryable — autoretry_for catches this and Celery schedules a retry.
                 raise
 
             # Existing pipeline.
@@ -293,7 +294,7 @@ def ingest_document(
     bind=True,
     name="mongorag.ingest_url",
     max_retries=2,
-    autoretry_for=(ConnectionError,),
+    autoretry_for=(ConnectionError, BlobAccessError),
     retry_backoff=15,
     retry_backoff_max=120,
 )
