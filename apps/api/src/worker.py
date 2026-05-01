@@ -410,6 +410,9 @@ def ingest_url(
                     DocumentStatus.FAILED,
                     error_message=f"Fetch failed: {e}",
                 )
+                # No blob exists yet — fetch failed before put(). blob_read_failed
+                # specifically signals a BlobStore read failure and would skew
+                # ops dashboards if reused for upstream URL-fetch failures.
                 _emit_ingestion_complete(
                     document_id=document_id,
                     tenant_id=tenant_id,
@@ -417,7 +420,7 @@ def ingest_url(
                     blob_size_bytes=0,
                     status="failed",
                     chunks=0,
-                    blob_read_failed=True,
+                    blob_read_failed=False,
                     docling_failed=False,
                     source_kind="url",
                 )
