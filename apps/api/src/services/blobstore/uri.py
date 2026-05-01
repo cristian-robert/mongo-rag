@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 
 class InvalidBlobURIError(ValueError):
@@ -36,8 +36,6 @@ def assert_tenant_owns_uri(
     if parsed.scheme == "supabase":
         # supabase://<bucket>/<tenant>/<doc>/<file>
         # `netloc` is the bucket; `path` is /tenant/doc/file
-        from urllib.parse import unquote
-
         decoded_path = unquote(parsed.path)
         path_parts = decoded_path.lstrip("/").split("/", 1)
         if not path_parts or not path_parts[0]:
@@ -58,15 +56,30 @@ def assert_tenant_owns_uri(
 
             upload_root = load_settings().upload_temp_dir
         root = Path(upload_root).resolve()
-        target = Path(parsed.path).resolve()
+        # Percent-decode the URI path before resolving so percent-encoded
+        # legitimate access (e.g. file:///tmp/uploads/tenant%2da/...) matches
+        # the on-disk decoded path. Mirrors the supabase:// branch (Med-2).
+        decoded_path = unquote(parsed.path)
+        # Reject null bytes BEFORE resolve() (which would raise ValueError
+        # from lstat with a less-clear error).
+        if "\x00" in decoded_path:
+            raise InvalidBlobURIError(f"unsafe null byte in path: {uri}")
+        target = Path(decoded_path).resolve()
         try:
             rel = target.relative_to(root)
         except ValueError as e:
             raise InvalidBlobURIError(f"file URI escapes upload_root: {uri}") from e
-        if not rel.parts or rel.parts[0] != tenant_id:
-            uri_tenant = rel.parts[0] if rel.parts else None
+        if not rel.parts:
+            raise TenantOwnershipError(f"tenant mismatch: uri=None expected={tenant_id!r}")
+        tenant_segment = rel.parts[0]
+        # Defensive: reject suspicious characters in the tenant segment
+        # (mirrors the supabase:// branch). "/" cannot appear because
+        # rel.parts already split on the separator.
+        if any(c in tenant_segment for c in ("..", "%", "\x00")):
+            raise InvalidBlobURIError(f"unsafe tenant segment {tenant_segment!r} in: {uri}")
+        if tenant_segment != tenant_id:
             raise TenantOwnershipError(
-                f"tenant mismatch: uri={uri_tenant!r} expected={tenant_id!r}"
+                f"tenant mismatch: uri={tenant_segment!r} expected={tenant_id!r}"
             )
         return
 

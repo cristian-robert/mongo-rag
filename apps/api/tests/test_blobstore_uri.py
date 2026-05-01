@@ -70,6 +70,38 @@ class TestAssertTenantOwnsURI:
                 "tenant\x00a",
             )
 
+    def test_file_uri_percent_encoded_tenant_decoded_then_matched(self, tmp_path):
+        """%2da → -a; the file:// tenant segment must decode before comparison.
+
+        Mirrors the supabase:// percent-decode parity established in Med-2.
+        """
+        # Create the actual on-disk path so resolve() works on real inodes.
+        tenant_dir = tmp_path / "tenant-a" / "doc-1"
+        tenant_dir.mkdir(parents=True)
+        target = tenant_dir / "file.pdf"
+        target.touch()
+        # URI uses percent-encoded form; resolved path on disk uses decoded form.
+        uri = f"file://{tmp_path}/tenant%2da/doc-1/file.pdf"
+        assert_tenant_owns_uri(uri, "tenant-a", upload_root=str(tmp_path))
+
+    def test_file_uri_tenant_segment_with_dotdot_rejected(self, tmp_path):
+        # Construct a URI whose first path segment after upload_root contains "..".
+        # The path-traversal/relative_to check would normally normalize this away,
+        # but the unsafe-character check must reject it before that.
+        uri = f"file://{tmp_path}/..upper/doc-1/file.pdf"
+        with pytest.raises((InvalidBlobURIError, TenantOwnershipError)):
+            assert_tenant_owns_uri(uri, "..upper", upload_root=str(tmp_path))
+
+    def test_file_uri_tenant_segment_with_null_byte_rejected(self, tmp_path):
+        uri = f"file://{tmp_path}/tenant%00a/doc-1/file.pdf"
+        with pytest.raises(InvalidBlobURIError):
+            assert_tenant_owns_uri(uri, "tenant\x00a", upload_root=str(tmp_path))
+
+    def test_file_uri_tenant_segment_with_percent_after_decode_rejected(self, tmp_path):
+        uri = f"file://{tmp_path}/%25weird/doc-1/file.pdf"
+        with pytest.raises(InvalidBlobURIError):
+            assert_tenant_owns_uri(uri, "%weird", upload_root=str(tmp_path))
+
 
 class TestExtractExtension:
     def test_pdf(self):
