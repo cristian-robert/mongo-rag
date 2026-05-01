@@ -267,6 +267,23 @@ def ingest_document(
                     "chunk_count": chunk_count,
                 }
 
+            # Retryable + retries remaining: Celery autoretry will pick this up.
+            # Do NOT flip the doc to FAILED, do NOT delete the blob, do NOT
+            # emit ingestion_complete — otherwise the dashboard sees a
+            # transient FAILED → READY flap when the retry succeeds.
+            if _will_celery_retry(self, e):
+                task_logger.warning(
+                    "retryable_exception_letting_celery_retry",
+                    extra={
+                        "document_id": document_id,
+                        "tenant_id": tenant_id,
+                        "exc": type(e).__name__,
+                        "retries": self.request.retries,
+                        "max_retries": self.max_retries,
+                    },
+                )
+                raise
+
             task_logger.exception("Ingestion failed: doc=%s, error=%s", document_id, str(e))
             safe_error = type(e).__name__
             if isinstance(e, (ValueError, TypeError, FileNotFoundError)):
@@ -639,6 +656,23 @@ def ingest_url(
                     "chunk_count": chunk_count,
                 }
 
+            # Retryable + retries remaining: Celery autoretry will pick this up.
+            # Keep the blob (retry can re-stream instead of re-fetching), keep
+            # the doc in PROCESSING, and skip the ingestion_complete emit so
+            # dashboards don't see a transient FAILED → READY flap.
+            if _will_celery_retry(self, e):
+                task_logger.warning(
+                    "retryable_exception_letting_celery_retry",
+                    extra={
+                        "document_id": document_id,
+                        "tenant_id": tenant_id,
+                        "exc": type(e).__name__,
+                        "retries": self.request.retries,
+                        "max_retries": self.max_retries,
+                    },
+                )
+                raise
+
             task_logger.exception("URL ingestion failed: doc=%s err=%s", document_id, e)
             safe_error = type(e).__name__
             try:
@@ -726,3 +760,16 @@ def _is_terminal_failure(task, exc: Exception) -> bool:
     if isinstance(exc, (BlobNotFoundError, TenantOwnershipError, ValueError, TypeError)):
         return True
     return task.request.retries >= task.max_retries
+
+
+def _will_celery_retry(task, exc: Exception) -> bool:
+    """True iff Celery's ``autoretry_for`` will pick up this exception and retries remain.
+
+    Used to decide whether to mutate doc state on the way out of the worker:
+    if Celery is going to retry, we must NOT flip the doc to FAILED — otherwise
+    the dashboard sees a transient FAILED → READY flap on the retry.
+    """
+    autoretry_for = getattr(task, "autoretry_for", ()) or ()
+    if not isinstance(exc, tuple(autoretry_for)):
+        return False
+    return task.request.retries < task.max_retries
