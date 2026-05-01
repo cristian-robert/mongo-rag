@@ -50,7 +50,13 @@ async def _seed_pending_document(mongo_db, tenant_id: str, source: str, title: s
 
 
 def _patch_worker_for_test_db(monkeypatch, mongo_db, tmp_path: Path) -> None:
-    """Point the worker's module-level settings at the per-test Mongo DB and tmp blob root."""
+    """Route the worker at the per-test Mongo DB and tmp blob root via env vars.
+
+    The worker reads ``settings = load_settings()`` fresh inside each task's
+    ``_run`` body, so monkeypatching the env vars here is sufficient — no
+    need to patch a module-level ``settings`` attribute. The blob store
+    factory cache is the only stateful seam left to reset.
+    """
     import os
 
     from src.services.blobstore.factory import reset_blob_store_cache
@@ -63,15 +69,6 @@ def _patch_worker_for_test_db(monkeypatch, mongo_db, tmp_path: Path) -> None:
         os.environ.get("MONGODB_TEST_URI", os.environ["MONGODB_URI"]),
     )
     reset_blob_store_cache()
-
-    # The worker reads `settings = load_settings()` once at import-time.
-    # Patch its module-level reference to a freshly-loaded Settings so the
-    # env overrides above take effect.
-    from src import worker as worker_module
-    from src.core.settings import load_settings as _reload_settings
-
-    fresh = _reload_settings()
-    monkeypatch.setattr(worker_module, "settings", fresh, raising=True)
 
 
 def _run_worker_task(blob_uri: str, document_id: str, tenant_id: str, source: str, title: str):

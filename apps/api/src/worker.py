@@ -8,13 +8,13 @@ from celery.utils.log import get_task_logger
 from src.core.settings import load_settings
 from src.services.blobstore import BlobAccessError
 
-settings = load_settings()
-
-# Configure Celery
+# Configure Celery. Each task re-reads settings via load_settings() inside
+# `_run` so tests can monkeypatch env vars without also patching a
+# module-level cache.
 celery_app = Celery(
     "mongorag",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
+    broker=load_settings().redis_url,
+    backend=load_settings().redis_url,
 )
 
 celery_app.conf.update(
@@ -83,6 +83,8 @@ def ingest_document(
             IngestionConfig,
         )
         from src.services.ingestion.service import IngestionService
+
+        settings = load_settings()
 
         # Security boundary: verify tenant ownership BEFORE any read.
         assert_tenant_owns_uri(blob_uri, tenant_id)
@@ -360,6 +362,8 @@ def ingest_url(
             fetch_url,
             html_to_markdown,
         )
+
+        settings = load_settings()
 
         client = AsyncMongoClient(settings.mongodb_uri, serverSelectionTimeoutMS=5000)
         db = client[settings.mongodb_database]
