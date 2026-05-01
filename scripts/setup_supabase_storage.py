@@ -2,10 +2,16 @@
 
 Idempotent — safe to run multiple times. Run once per environment after deploying.
 
+Authenticates with a DISTINCT S3 access-key/secret pair minted under the Supabase
+dashboard (Project Settings → Storage → S3 Connection). These are NOT the
+service-role JWT-signing key (`SUPABASE_SECRET_KEY`); using the service-role key
+here returns SignatureDoesNotMatch / 403 from Supabase Storage's S3-compat layer.
+
 Usage:
     BLOB_STORE=supabase \\
     SUPABASE_URL=https://<ref>.supabase.co \\
-    SUPABASE_SECRET_KEY=... \\
+    SUPABASE_S3_ACCESS_KEY=... \\
+    SUPABASE_S3_SECRET_KEY=... \\
     SUPABASE_STORAGE_BUCKET=mongorag-uploads \\
     uv run python scripts/setup_supabase_storage.py
 """
@@ -22,11 +28,16 @@ from botocore.exceptions import ClientError
 def main() -> int:
     bucket = os.environ.get("SUPABASE_STORAGE_BUCKET")
     supabase_url = os.environ.get("SUPABASE_URL")
-    secret_key = os.environ.get("SUPABASE_SECRET_KEY")
+    access_key = os.environ.get("SUPABASE_S3_ACCESS_KEY")
+    secret_key = os.environ.get("SUPABASE_S3_SECRET_KEY")
 
-    if not (bucket and supabase_url and secret_key):
+    if not (bucket and supabase_url and access_key and secret_key):
         print(
-            "ERROR: SUPABASE_STORAGE_BUCKET, SUPABASE_URL, SUPABASE_SECRET_KEY required"
+            "ERROR: SUPABASE_STORAGE_BUCKET, SUPABASE_URL, "
+            "SUPABASE_S3_ACCESS_KEY, SUPABASE_S3_SECRET_KEY required. "
+            "Mint S3 credentials under Supabase dashboard → "
+            "Project Settings → Storage → S3 Connection. "
+            "These are NOT the service-role SUPABASE_SECRET_KEY."
         )
         return 1
 
@@ -34,7 +45,7 @@ def main() -> int:
     client = boto3.client(
         "s3",
         endpoint_url=endpoint,
-        aws_access_key_id=secret_key,
+        aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
         region_name="us-east-1",
     )

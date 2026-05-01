@@ -29,27 +29,28 @@ def get_blob_store() -> BlobStore:
             raise ValueError("SUPABASE_STORAGE_BUCKET is required when BLOB_STORE='supabase'")
         if not settings.supabase_url:
             raise ValueError("SUPABASE_URL is required when BLOB_STORE='supabase'")
+        if not settings.supabase_s3_access_key:
+            raise ValueError(
+                "SUPABASE_S3_ACCESS_KEY is required when BLOB_STORE='supabase'. "
+                "Mint under Supabase dashboard → Project Settings → Storage → S3 Connection. "
+                "NOT the service-role SUPABASE_SECRET_KEY."
+            )
+        if not settings.supabase_s3_secret_key:
+            raise ValueError(
+                "SUPABASE_S3_SECRET_KEY is required when BLOB_STORE='supabase'. "
+                "Mint alongside SUPABASE_S3_ACCESS_KEY in the Supabase dashboard."
+            )
         # Import lazy — boto3 not needed in fs-only test runs.
         from src.services.blobstore.supabase import SupabaseBlobStore
 
         _cached = SupabaseBlobStore(
             bucket=settings.supabase_storage_bucket,
             supabase_url=settings.supabase_url,
-            secret_key=_require_secret(settings),
+            access_key=settings.supabase_s3_access_key,
+            secret_key=settings.supabase_s3_secret_key,
             region=settings.supabase_s3_region,
         )
     else:
         raise ValueError(f"unknown BLOB_STORE: {settings.blob_store}")
 
     return _cached
-
-
-def _require_secret(settings) -> str:  # noqa: ANN001
-    # Supabase secret-key handling lives in core/postgres for DB; for storage
-    # we read the same secret env. Importing here avoids a circular dep.
-    import os
-
-    secret = os.environ.get("SUPABASE_SECRET_KEY")
-    if not secret:
-        raise ValueError("SUPABASE_SECRET_KEY is required when BLOB_STORE='supabase'")
-    return secret

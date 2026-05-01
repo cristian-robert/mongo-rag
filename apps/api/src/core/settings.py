@@ -226,6 +226,23 @@ class Settings(BaseSettings):
         description="Supabase Storage bucket name. Required when blob_store='supabase'.",
     )
 
+    supabase_s3_access_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Supabase Storage S3 access key id. Required when blob_store='supabase'. "
+            "Mint under Supabase dashboard → Project Settings → Storage → S3 Connection. "
+            "NOT the service-role secret."
+        ),
+    )
+
+    supabase_s3_secret_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Supabase Storage S3 secret. Required when blob_store='supabase'. "
+            "Mint alongside supabase_s3_access_key in the dashboard."
+        ),
+    )
+
     supabase_s3_region: str = Field(
         default="us-east-1",
         description="boto3 region label for the Supabase S3-compatible endpoint.",

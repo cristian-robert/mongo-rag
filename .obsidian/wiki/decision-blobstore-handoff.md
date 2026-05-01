@@ -50,7 +50,7 @@ Adopt **Approach C: uniform SDK Protocol** with these properties:
 - One read path, one write path, one URI grammar across dev and prod.
 - Tenant assertion is the security boundary, not bucket ACLs — the same check works for `file://` and `supabase://`.
 - Observability split into two distinct failure modes: `blob_read_failed` (handoff broken — infra issue) vs `docling_failed` (document broken — caller issue). Bug B made these indistinguishable; the fix restores the distinction.
-- Settings additions: `BLOB_STORE`, `SUPABASE_STORAGE_BUCKET`, `SUPABASE_S3_REGION`. Default `BLOB_STORE=filesystem`, `UPLOAD_TEMP_DIR=./.tmp/uploads` (was `/tmp/...`).
+- Settings additions: `BLOB_STORE`, `SUPABASE_STORAGE_BUCKET`, `SUPABASE_S3_REGION`, `SUPABASE_S3_ACCESS_KEY`, `SUPABASE_S3_SECRET_KEY`. Default `BLOB_STORE=filesystem`, `UPLOAD_TEMP_DIR=./.tmp/uploads` (was `/tmp/...`). S3 access uses a distinct access-key/secret pair minted under Supabase dashboard → Storage → S3 Connection — NOT the service-role `SUPABASE_SECRET_KEY` (which is a JWT-signing key for the Postgres/REST APIs and is rejected by the S3-compat layer with SignatureDoesNotMatch).
 
 ## Key Takeaways
 

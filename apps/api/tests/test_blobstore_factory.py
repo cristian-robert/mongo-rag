@@ -31,3 +31,23 @@ def test_supabase_without_bucket_raises(monkeypatch):
     monkeypatch.delenv("SUPABASE_STORAGE_BUCKET", raising=False)
     with pytest.raises(ValueError, match="SUPABASE_STORAGE_BUCKET"):
         get_blob_store()
+
+
+def test_supabase_without_access_key_raises(monkeypatch):
+    monkeypatch.setenv("BLOB_STORE", "supabase")
+    monkeypatch.setenv("SUPABASE_STORAGE_BUCKET", "mongorag-uploads")
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_S3_SECRET_KEY", "s")
+    monkeypatch.delenv("SUPABASE_S3_ACCESS_KEY", raising=False)
+    with pytest.raises(ValueError, match="SUPABASE_S3_ACCESS_KEY"):
+        get_blob_store()
+
+
+def test_supabase_without_secret_key_raises(monkeypatch):
+    monkeypatch.setenv("BLOB_STORE", "supabase")
+    monkeypatch.setenv("SUPABASE_STORAGE_BUCKET", "mongorag-uploads")
+    monkeypatch.setenv("SUPABASE_URL", "https://test.supabase.co")
+    monkeypatch.setenv("SUPABASE_S3_ACCESS_KEY", "a")
+    monkeypatch.delenv("SUPABASE_S3_SECRET_KEY", raising=False)
+    with pytest.raises(ValueError, match="SUPABASE_S3_SECRET_KEY"):
+        get_blob_store()

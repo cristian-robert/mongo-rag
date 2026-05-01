@@ -18,12 +18,19 @@ _CHUNK_SIZE = 64 * 1024
 
 
 class SupabaseBlobStore:
-    """boto3 against the Supabase Storage S3-compatible endpoint. URI scheme: supabase://."""
+    """boto3 against the Supabase Storage S3-compatible endpoint. URI scheme: supabase://.
+
+    Authenticates with a DISTINCT S3 access-key/secret pair minted under the Supabase
+    dashboard (Project Settings → Storage → S3 Connection). These are NOT the
+    service-role JWT-signing key (`SUPABASE_SECRET_KEY`); using the service-role key
+    here returns SignatureDoesNotMatch / 403 from Supabase Storage's S3-compat layer.
+    """
 
     def __init__(
         self,
         bucket: str,
         supabase_url: str,
+        access_key: str,
         secret_key: str,
         region: str = "us-east-1",
         endpoint_url: str | None | object = ...,  # sentinel: ... means "derive from supabase_url"
@@ -34,7 +41,7 @@ class SupabaseBlobStore:
         kwargs = {
             "service_name": "s3",
             "region_name": region,
-            "aws_access_key_id": secret_key,
+            "aws_access_key_id": access_key,
             "aws_secret_access_key": secret_key,
         }
         if endpoint_url:

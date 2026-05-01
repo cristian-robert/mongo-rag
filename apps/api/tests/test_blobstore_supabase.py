@@ -24,7 +24,8 @@ def store(mock_s3):
     return SupabaseBlobStore(
         bucket="mongorag-uploads",
         supabase_url="https://test.supabase.co",
-        secret_key="test-secret",
+        access_key="test-access-key",
+        secret_key="test-secret-key",
         region="us-east-1",
         endpoint_url=None,  # moto intercepts the default boto3 endpoint
     )

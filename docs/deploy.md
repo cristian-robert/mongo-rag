@@ -29,9 +29,13 @@ fly apps create mongorag-worker
 ./scripts/fly-secrets.sh both
 
 # 3. Provision Supabase Storage bucket + lifecycle (24h auto-delete)
+#    SUPABASE_S3_ACCESS_KEY / SUPABASE_S3_SECRET_KEY are minted under
+#    Supabase dashboard → Project Settings → Storage → S3 Connection.
+#    They are NOT the service-role SUPABASE_SECRET_KEY.
 BLOB_STORE=supabase \
 SUPABASE_URL=https://<project>.supabase.co \
-SUPABASE_SECRET_KEY=<service-role-key> \
+SUPABASE_S3_ACCESS_KEY=<s3-access-key> \
+SUPABASE_S3_SECRET_KEY=<s3-secret-key> \
 SUPABASE_STORAGE_BUCKET=mongorag-uploads \
   uv run python scripts/setup_supabase_storage.py
 
@@ -63,7 +67,9 @@ Managed by `scripts/fly-secrets.sh` (sourced from `apps/api/.env`, pushed to **b
 | `MONGODB_URI` | Atlas connection string |
 | `DATABASE_URL` | Supabase Postgres |
 | `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_SECRET_KEY` | Service-role key (storage admin, RLS bypass) |
+| `SUPABASE_SECRET_KEY` | Service-role JWT-signing key (RLS bypass for Postgres / REST) |
+| `SUPABASE_S3_ACCESS_KEY` | Storage S3 access key id (see callout below) |
+| `SUPABASE_S3_SECRET_KEY` | Storage S3 secret (see callout below) |
 | `SUPABASE_JWT_SECRET` | Dashboard JWT verification |
 | `SUPABASE_STORAGE_BUCKET` | Bucket name (default `mongorag-uploads`) |
 | `LLM_API_KEY` | LLM provider key (OpenRouter / OpenAI / Anthropic) |
@@ -75,6 +81,15 @@ Managed by `scripts/fly-secrets.sh` (sourced from `apps/api/.env`, pushed to **b
 | `NEXTAUTH_SECRET` | Legacy NextAuth fallback (still wired) |
 
 Rotate by editing `apps/api/.env` and re-running `./scripts/fly-secrets.sh both`. Fly restarts machines automatically on secret change.
+
+> **Important — Storage S3 credentials are NOT the service-role key.**
+> `SUPABASE_S3_ACCESS_KEY` and `SUPABASE_S3_SECRET_KEY` are a distinct
+> access-key/secret pair that you must mint under Supabase dashboard →
+> Project Settings → Storage → S3 Connection. The service-role
+> `SUPABASE_SECRET_KEY` is a JWT-signing key for the Postgres / REST
+> APIs and will be rejected by Storage's S3-compat layer with
+> SignatureDoesNotMatch / 403. Both credentials live in the same
+> Supabase project but are minted and rotated independently.
 
 ## Worker Autoscale Gap
 
