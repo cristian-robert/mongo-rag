@@ -432,6 +432,8 @@ def ingest_url(
                     DocumentStatus.FAILED,
                     error_message="Could not extract text from URL",
                 )
+                if blob_store is not None and blob_uri is not None:
+                    await _safe_delete(blob_store, blob_uri)
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
 
             content_hash = DocumentModel.hash_content(content)
@@ -445,6 +447,8 @@ def ingest_url(
                     DocumentStatus.FAILED,
                     error_message="Duplicate of existing document",
                 )
+                if blob_store is not None and blob_uri is not None:
+                    await _safe_delete(blob_store, blob_uri)
                 existing_id = str(existing_doc["_id"])
                 return {
                     "document_id": existing_id,
@@ -481,6 +485,8 @@ def ingest_url(
                     DocumentStatus.FAILED,
                     error_message="No chunks created from URL",
                 )
+                if blob_store is not None and blob_uri is not None:
+                    await _safe_delete(blob_store, blob_uri)
                 return {"document_id": document_id, "status": "failed", "chunk_count": 0}
 
             embedder = create_embedder()
@@ -504,6 +510,9 @@ def ingest_url(
                 version=version,
                 content=content,
             )
+
+            # Success — delete blob (lifecycle rule is the safety net if this fails).
+            await _safe_delete(blob_store, blob_uri)
 
             task_logger.info(
                 "URL ingestion complete: doc=%s tenant=%s url=%s chunks=%d",
@@ -530,6 +539,11 @@ def ingest_url(
                 )
             except Exception:
                 task_logger.exception("Failed to update status after error")
+
+            # Terminal-after-retries cleanup. Transient retryable errors keep the
+            # blob so the retry can re-stream from it instead of re-fetching the URL.
+            if blob_store is not None and blob_uri is not None and _is_terminal_failure(self, e):
+                await _safe_delete(blob_store, blob_uri)
             raise
         finally:
             await client.close()
@@ -537,10 +551,6 @@ def ingest_url(
 
             if os.path.exists(temp_dir):
                 _shutil.rmtree(temp_dir, ignore_errors=True)
-
-            # Delete the blob copy of the fetched URL content (always — it's a transient stage).
-            if blob_store is not None and blob_uri is not None:
-                await _safe_delete(blob_store, blob_uri)
 
     return asyncio.run(_run())
 
