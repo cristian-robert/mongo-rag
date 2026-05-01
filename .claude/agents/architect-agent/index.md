@@ -14,7 +14,7 @@ _Last verified: 2026-05-01 (post #79 BlobStore + Fly deploy)_
 - `core/observability.py` — JSON log formatter, ContextVar-injected request_id/tenant_id/user_id, redaction, Sentry init
 - `core/request_logging.py` — `x-request-id` middleware, sanitized exception handlers
 - `core/dependencies.py`, `core/deps.py` — DI for DB connections, settings, agent deps
-- `core/settings.py` — Pydantic Settings (all env vars). Adds `BLOB_STORE` (`filesystem`|`supabase`), `SUPABASE_STORAGE_BUCKET` (default `mongorag-uploads`), `SUPABASE_S3_REGION`. `UPLOAD_TEMP_DIR` default changed to `./.tmp/uploads` (was under `/tmp/...`).
+- `core/settings.py` — Pydantic Settings (all env vars). Adds `BLOB_STORE` (`fs`|`supabase`), `SUPABASE_STORAGE_BUCKET` (default `mongorag-uploads`), `SUPABASE_S3_REGION`. `UPLOAD_TEMP_DIR` default changed to `./.tmp/uploads` (was under `/tmp/...`).
 
 ### Auth
 - `auth/api_keys.py` — `mrag_*` prefix + 48-byte body, **bcrypt (12 rounds)** hash. Postgres-default lookup; constant-time bcrypt over candidates; Mongo SHA-256 fallback when `API_KEY_BACKEND=mongo`
