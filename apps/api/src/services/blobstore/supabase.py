@@ -109,13 +109,11 @@ class SupabaseBlobStore:
     async def delete(self, uri: str) -> None:
         import asyncio
 
+        bucket, key = self._parse(uri)  # let ValueError propagate — programming error
         try:
-            bucket, key = self._parse(uri)
             await asyncio.to_thread(self._client.delete_object, Bucket=bucket, Key=key)
         except ClientError as e:
             # Idempotent + non-blocking — log and swallow. Lifecycle rule is the safety net.
-            logger.warning("blob_delete_failed", extra={"uri": uri, "error": str(e)})
-        except Exception as e:
             logger.warning("blob_delete_failed", extra={"uri": uri, "error": str(e)})
 
     async def signed_url(self, uri: str, expires_in: int = 3600) -> str:

@@ -546,11 +546,15 @@ def ingest_url(
 
 
 async def _safe_delete(blob_store, blob_uri: str) -> None:
-    """Delete with logged-but-swallowed errors. Lifecycle rule is the safety net."""
+    """Delete with logged-but-swallowed BlobStoreError. ValueError propagates."""
+    from src.services.blobstore import BlobStoreError
+
     try:
         await blob_store.delete(blob_uri)
-    except Exception as e:  # noqa: BLE001
+    except BlobStoreError as e:
         task_logger.warning("blob_delete_failed: uri=%s err=%s", blob_uri, e)
+    # Programming errors (ValueError from URI parsing, AttributeError, etc.)
+    # propagate — they indicate a bug, not a transient infra issue.
 
 
 def _is_terminal_failure(task, exc: Exception) -> bool:
