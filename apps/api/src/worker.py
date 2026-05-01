@@ -251,9 +251,16 @@ def ingest_document(
 
         except Exception as e:
             if committed:
-                # Post-success exception (delete or log raised). The doc was
-                # already persisted READY — do NOT mark it FAILED. The lifecycle
-                # rule will catch any leaked blob.
+                # Intentionally swallow post-commit exceptions into a warning
+                # rather than raising: the doc is already READY in Mongo, and
+                # propagating would trigger Celery autoretry which would re-run
+                # the whole pipeline against an already-committed document.
+                # The warning gives observability without the state churn.
+                # Note: this dilutes Task 8's "fail loud" intent for code paths
+                # that run after commit (e.g. _safe_delete, post-success
+                # logging) — accepted tradeoff to avoid retry-storms on
+                # already-successful work. See Task 5 (commit 75cecfb) and
+                # Task 8 (commit 778b8ea).
                 task_logger.warning(
                     "post_success_exception",
                     extra={
@@ -640,9 +647,16 @@ def ingest_url(
 
         except Exception as e:
             if committed:
-                # Post-success exception (delete or log raised). The doc was
-                # already persisted READY — do NOT mark it FAILED. The lifecycle
-                # rule will catch any leaked blob.
+                # Intentionally swallow post-commit exceptions into a warning
+                # rather than raising: the doc is already READY in Mongo, and
+                # propagating would trigger Celery autoretry which would re-run
+                # the whole pipeline against an already-committed document.
+                # The warning gives observability without the state churn.
+                # Note: this dilutes Task 8's "fail loud" intent for code paths
+                # that run after commit (e.g. _safe_delete, post-success
+                # logging) — accepted tradeoff to avoid retry-storms on
+                # already-successful work. See Task 5 (commit 75cecfb) and
+                # Task 8 (commit 778b8ea).
                 task_logger.warning(
                     "post_success_exception",
                     extra={
