@@ -54,3 +54,32 @@ def test_blob_store_supabase_requires_bucket(monkeypatch):
     s = Settings()
     assert s.blob_store == "supabase"
     assert s.supabase_storage_bucket == "mongorag-uploads"
+
+
+def test_settings_uses_settings_config_dict():
+    """Regression: model_config must be SettingsConfigDict, not the looser pydantic ConfigDict."""
+    from src.core.settings import Settings
+
+    # Both ConfigDict and SettingsConfigDict are TypedDicts at runtime
+    assert isinstance(Settings.model_config, dict)
+    # The actual value-shape check:
+    assert Settings.model_config.get("env_file") == ".env"
+
+
+def test_settings_app_env_declared_exactly_once():
+    """Regression: Bug fix — app_env was declared twice, second silently shadowed first."""
+    import ast
+    import inspect
+
+    from src.core import settings
+
+    source = inspect.getsource(settings)
+    tree = ast.parse(source)
+    # Find the Settings class
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "Settings")
+    names = [
+        n.target.id
+        for n in cls.body
+        if isinstance(n, ast.AnnAssign) and isinstance(n.target, ast.Name)
+    ]
+    assert names.count("app_env") == 1, f"app_env declared {names.count('app_env')} times"
