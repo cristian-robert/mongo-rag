@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 # Sync secrets from local .env to both Fly apps.
 # Usage: ./scripts/fly-secrets.sh [api|worker|both]
+# Safe to invoke from any CWD.
 
 set -euo pipefail
+set +x  # defensive: refuse to leak secret values into stderr if a parent shell set -x
+
+# Resolve repo root from script location so CWD doesn't matter.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+ENV_FILE="${REPO_ROOT}/apps/api/.env"
 
 TARGET="${1:-both}"
 
@@ -24,15 +32,15 @@ SECRETS=(
   NEXTAUTH_SECRET
 )
 
-if [[ ! -f apps/api/.env ]]; then
-  echo "ERROR: apps/api/.env not found" >&2
+if [[ ! -f "${ENV_FILE}" ]]; then
+  echo "ERROR: ${ENV_FILE} not found" >&2
   exit 1
 fi
 
 # Load .env into the shell.
 set -a
 # shellcheck disable=SC1091
-source apps/api/.env
+source "${ENV_FILE}"
 set +a
 
 set_for() {
