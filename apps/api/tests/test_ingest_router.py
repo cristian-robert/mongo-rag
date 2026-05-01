@@ -291,3 +291,119 @@ def test_ingest_url_dispatches_celery_task(app_client):
     assert body["document_id"] == "doc-url-789"
     assert body["status"] == "pending"
     assert body["task_id"] == "celery-url-task-456"
+
+
+# --- Streaming upload-size cap --------------------------------------------
+
+
+@pytest.mark.unit
+def test_ingest_oversize_streaming_upload_returns_413(app_client, tmp_path, monkeypatch):
+    """A multipart payload that exceeds max_upload_size_mb is rejected DURING streaming.
+
+    Pre-fix: ``_validate_file`` only consulted the (often-None) ``UploadFile.size``,
+    and the ``/ingest`` route is exempted from the global body-size middleware,
+    so the BlobStore ate the entire stream before anything checked the size.
+    Post-fix: the SizeCappedReader aborts the stream the moment bytes exceed
+    the cap; the BlobStore.put exception path cleans up the partial blob and
+    the router returns 413.
+
+    To exercise the streaming guard specifically (and not the existing
+    ``file.size`` pre-check that ``_validate_file`` performs), patch
+    ``_validate_file`` to a no-op — this simulates the chunked-upload scenario
+    where ``UploadFile.size`` is None.
+    """
+    client, mock_deps = app_client
+    mock_deps.settings.max_upload_size_mb = 1  # 1 MiB cap for the test
+
+    monkeypatch.setenv("BLOB_STORE", "fs")
+    monkeypatch.setenv("UPLOAD_TEMP_DIR", str(tmp_path))
+    from src.services.blobstore.factory import reset_blob_store_cache
+
+    reset_blob_store_cache()
+
+    # 2 MiB payload — twice the cap.
+    payload = b"x" * (2 * 1024 * 1024)
+
+    with (
+        patch("src.routers.ingest.ingest_document") as mock_task,
+        patch("src.routers.ingest.IngestionService") as mock_service_cls,
+        patch("src.routers.ingest.load_settings") as mock_load_settings,
+        # Bypass the pre-existing file.size short-circuit so the test
+        # actually exercises the streaming cap (chunked-upload simulation).
+        patch("src.routers.ingest._validate_file", return_value=".txt"),
+    ):
+        settings_obj = MagicMock()
+        settings_obj.max_upload_size_mb = 1
+        mock_load_settings.return_value = settings_obj
+
+        mock_service = MagicMock()
+        mock_service.create_pending_document = AsyncMock(return_value="doc-too-big")
+        update_status_mock = AsyncMock()
+        mock_service.update_status = update_status_mock
+        mock_service_cls.return_value = mock_service
+
+        response = client.post(
+            "/api/v1/documents/ingest",
+            files={"file": ("big.txt", io.BytesIO(payload), "text/plain")},
+            headers=make_auth_header(),
+        )
+
+    assert response.status_code == 413, response.text
+    assert "too large" in response.json()["detail"].lower()
+
+    # Celery task must NOT be dispatched — no work created for an oversized upload.
+    assert not mock_task.delay.called, "ingest_document.delay must not run for oversize upload"
+
+    # Doc status was flipped to FAILED (so dashboards reflect the rejection).
+    update_calls = update_status_mock.call_args_list
+    assert any("failed" in str(c).lower() for c in update_calls), (
+        f"expected update_status(..., 'failed', ...); got "
+        f"call_count={update_status_mock.call_count} calls={update_calls!r}"
+    )
+
+    # Critically: no partial blob persisted on disk. FilesystemBlobStore.put
+    # cleans up the target file when the source raises mid-stream.
+    leftover = list(tmp_path.rglob("*"))
+    leftover_files = [p for p in leftover if p.is_file()]
+    assert not leftover_files, (
+        f"partial blob NOT cleaned up after oversize-upload rejection: {leftover_files!r}"
+    )
+
+
+@pytest.mark.unit
+def test_ingest_at_size_limit_is_accepted(app_client, tmp_path, monkeypatch):
+    """Edge case: payload exactly at max_upload_size_mb succeeds (boundary check)."""
+    client, mock_deps = app_client
+    mock_deps.settings.max_upload_size_mb = 1
+
+    monkeypatch.setenv("BLOB_STORE", "fs")
+    monkeypatch.setenv("UPLOAD_TEMP_DIR", str(tmp_path))
+    from src.services.blobstore.factory import reset_blob_store_cache
+
+    reset_blob_store_cache()
+
+    # Exactly 1 MiB.
+    payload = b"x" * (1 * 1024 * 1024)
+
+    with (
+        patch("src.routers.ingest.ingest_document") as mock_task,
+        patch("src.routers.ingest.IngestionService") as mock_service_cls,
+        patch("src.routers.ingest.load_settings") as mock_load_settings,
+    ):
+        settings_obj = MagicMock()
+        settings_obj.max_upload_size_mb = 1
+        mock_load_settings.return_value = settings_obj
+
+        mock_task.delay.return_value = MagicMock(id="task-edge-1")
+        mock_service = MagicMock()
+        mock_service.create_pending_document = AsyncMock(return_value="doc-edge")
+        mock_service_cls.return_value = mock_service
+
+        response = client.post(
+            "/api/v1/documents/ingest",
+            files={"file": ("edge.txt", io.BytesIO(payload), "text/plain")},
+            headers=make_auth_header(),
+        )
+
+    assert response.status_code == 202, response.text
+    assert mock_task.delay.called

@@ -33,16 +33,24 @@ class FilesystemBlobStore:
             raise ValueError(f"unsafe key: {key}")
         target = self._root / key
         target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open("wb") as dst:
-            if hasattr(source, "read"):
-                while True:
-                    chunk = source.read(_CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    dst.write(chunk)
-            else:
-                async for chunk in source:
-                    dst.write(chunk)
+        try:
+            with target.open("wb") as dst:
+                if hasattr(source, "read"):
+                    while True:
+                        chunk = source.read(_CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        dst.write(chunk)
+                else:
+                    async for chunk in source:
+                        dst.write(chunk)
+        except BaseException:
+            # Cleanup partial file on any failure (size cap, network, etc.).
+            try:
+                target.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
         return f"file://{target}"
 
     @asynccontextmanager

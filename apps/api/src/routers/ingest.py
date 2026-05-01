@@ -40,6 +40,37 @@ SUPPORTED_EXTENSIONS = {
 }
 
 
+class _UploadTooLargeError(Exception):
+    """Raised by _SizeCappedReader when bytes read exceed the configured cap."""
+
+
+class _SizeCappedReader:
+    """Wraps a BinaryIO to enforce a hard byte cap during streaming reads.
+
+    UploadFile.size is unreliable for streamed multipart uploads (often None
+    until the body is fully consumed), so a content-length pre-check leaves
+    the BlobStore exposed to unbounded streams. This adapter counts bytes as
+    the BlobStore reads them and raises :class:`_UploadTooLargeError` the
+    moment the cap is exceeded — the BlobStore's own ``put`` exception
+    handling cleans up any partial blob, so the only thing the router has
+    to do on catch is return 413.
+    """
+
+    def __init__(self, src, max_bytes: int) -> None:
+        self._src = src
+        self._max = max_bytes
+        self._read = 0
+
+    def read(self, size: int = -1) -> bytes:
+        chunk = self._src.read(size)
+        self._read += len(chunk)
+        if self._read > self._max:
+            raise _UploadTooLargeError(
+                f"upload exceeded cap of {self._max} bytes (read={self._read})"
+            )
+        return chunk
+
+
 def _get_settings() -> Settings:
     return load_settings()
 
@@ -145,8 +176,26 @@ async def ingest_document_endpoint(
 
     blob_store = get_blob_store()
     key = f"{tenant_id}/{document_id}/{safe_name}"
+    max_bytes = settings.max_upload_size_mb * 1024 * 1024
+    capped_source = _SizeCappedReader(file.file, max_bytes=max_bytes)
     try:
-        blob_uri = await blob_store.put(key, file.file, file.content_type)
+        blob_uri = await blob_store.put(key, capped_source, file.content_type)
+    except _UploadTooLargeError:
+        # BlobStore.put cleans up its own partial blob; mark the doc failed
+        # so the dashboard reflects what happened, then return 413.
+        await service.update_status(
+            str(document_id), tenant_id, "failed", error_message="File too large"
+        )
+        logger.warning(
+            "Upload rejected for doc=%s tenant=%s: exceeded %dMB cap",
+            document_id,
+            tenant_id,
+            settings.max_upload_size_mb,
+        )
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum size: {settings.max_upload_size_mb}MB",
+        )
     except BlobStoreError as e:
         await service.update_status(
             str(document_id), tenant_id, "failed", error_message="Upload failed"
