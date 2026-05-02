@@ -75,20 +75,20 @@ function validateUrl(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
-function safeColor(input: string | undefined, fallback: string): string {
+export function safeColor(input: string | undefined, fallback: string): string {
   if (!input) return fallback;
   if (!SAFE_COLOR.test(input)) return fallback;
   return input;
 }
 
-function safePosition(input: string | undefined): Position {
+export function safePosition(input: string | undefined, fallback: Position = "bottom-right"): Position {
   if (input && ALLOWED_POSITIONS.has(input as Position)) {
     return input as Position;
   }
-  return "bottom-right";
+  return fallback;
 }
 
-function safeText(input: string | undefined, fallback: string, max = 200): string {
+export function safeText(input: string | undefined, fallback: string, max = 200): string {
   if (!input) return fallback;
   return input.replace(CONTROL_CHARS, "").slice(0, max) || fallback;
 }
