@@ -4,6 +4,8 @@ import asyncio
 import logging
 from typing import Dict, List, Optional
 
+from bson import ObjectId
+from bson.errors import InvalidId
 from pymongo.errors import OperationFailure
 
 from src.core.dependencies import AgentDependencies
@@ -12,11 +14,35 @@ from src.models.search import SearchResult
 logger = logging.getLogger(__name__)
 
 
+def _coerce_document_oids(document_ids: Optional[List[str]]) -> Optional[List[ObjectId]]:
+    """Convert string document_ids to ObjectIds, dropping invalid entries.
+
+    Returns None when no filtering should be applied (input None or empty
+    after coercion fails). Empty input list is treated as None — matches the
+    BotService default of an empty document_filter.
+
+    Note: an *intentional* empty filter (mode='ids' with no ids) is the
+    caller's responsibility to short-circuit BEFORE reaching search; the
+    chat path handles that and returns zero results without calling search.
+    """
+    if not document_ids:
+        return None
+    coerced: List[ObjectId] = []
+    for raw in document_ids:
+        try:
+            coerced.append(ObjectId(raw))
+        except (InvalidId, TypeError):
+            logger.warning("search_filter_invalid_document_id: %r dropped", raw)
+            continue
+    return coerced or None
+
+
 async def semantic_search(
     deps: AgentDependencies,
     query: str,
     tenant_id: str,
     match_count: Optional[int] = None,
+    document_ids: Optional[List[str]] = None,
 ) -> List[SearchResult]:
     """
     Perform pure semantic search using MongoDB vector similarity.
@@ -26,6 +52,8 @@ async def semantic_search(
         query: Search query text.
         tenant_id: Tenant ID for isolation.
         match_count: Number of results to return (default: 10).
+        document_ids: Optional whitelist of document_ids (string ObjectIds)
+            to restrict the search to. Used by bot-scoped retrieval (#85).
 
     Returns:
         List of search results ordered by similarity.
@@ -41,6 +69,13 @@ async def semantic_search(
         # Generate embedding for query (already returns list[float])
         query_embedding = await deps.get_embedding(query)
 
+        # Build $vectorSearch filter — tenant_id is mandatory; document_id
+        # narrows further when a bot's document_filter is set.
+        vector_filter: Dict = {"tenant_id": tenant_id}
+        oids = _coerce_document_oids(document_ids)
+        if oids is not None:
+            vector_filter["document_id"] = {"$in": oids}
+
         # Build MongoDB aggregation pipeline
         pipeline = [
             {
@@ -50,7 +85,7 @@ async def semantic_search(
                     "path": "embedding",
                     "numCandidates": 100,  # Search space (10x limit is good default)
                     "limit": match_count,
-                    "filter": {"tenant_id": tenant_id},
+                    "filter": vector_filter,
                 }
             },
             {
@@ -122,6 +157,7 @@ async def text_search(
     query: str,
     tenant_id: str,
     match_count: Optional[int] = None,
+    document_ids: Optional[List[str]] = None,
 ) -> List[SearchResult]:
     """
     Perform full-text search using MongoDB Atlas Search.
@@ -134,6 +170,8 @@ async def text_search(
         query: Search query text.
         tenant_id: Tenant ID for isolation.
         match_count: Number of results to return (default: 10).
+        document_ids: Optional whitelist of document_ids (string ObjectIds)
+            to restrict the search to. Used by bot-scoped retrieval (#85).
 
     Returns:
         List of search results ordered by text relevance.
@@ -145,6 +183,14 @@ async def text_search(
 
         # Validate match count
         match_count = min(match_count, deps.settings.max_match_count)
+
+        # Compose the $search compound.filter — tenant_id is mandatory;
+        # document_id is optional and only set when a bot's document_filter
+        # restricts the corpus.
+        compound_filter: list = [{"equals": {"path": "tenant_id", "value": tenant_id}}]
+        oids = _coerce_document_oids(document_ids)
+        if oids is not None:
+            compound_filter.append({"in": {"path": "document_id", "value": oids}})
 
         # Build MongoDB Atlas Search aggregation pipeline
         pipeline = [
@@ -161,7 +207,7 @@ async def text_search(
                                 }
                             }
                         ],
-                        "filter": [{"equals": {"path": "tenant_id", "value": tenant_id}}],
+                        "filter": compound_filter,
                     },
                 }
             },
@@ -307,6 +353,7 @@ async def hybrid_search(
     match_count: Optional[int] = None,
     text_weight: Optional[float] = None,
     rrf_k: Optional[int] = None,
+    document_ids: Optional[List[str]] = None,
 ) -> List[SearchResult]:
     """
     Perform hybrid search combining semantic and keyword matching.
@@ -321,6 +368,8 @@ async def hybrid_search(
         match_count: Number of results to return (default: 10).
         text_weight: Weight for text matching (0-1, not used with RRF).
         rrf_k: Override the RRF constant (default from settings, typically 60).
+        document_ids: Optional whitelist of document_ids (string ObjectIds)
+            to restrict the search to. Used by bot-scoped retrieval (#85).
 
     Returns:
         List of search results sorted by combined RRF score.
@@ -348,8 +397,8 @@ async def hybrid_search(
 
         # Run both searches concurrently for performance
         semantic_results, text_results = await asyncio.gather(
-            semantic_search(deps, query, tenant_id, fetch_count),
-            text_search(deps, query, tenant_id, fetch_count),
+            semantic_search(deps, query, tenant_id, fetch_count, document_ids=document_ids),
+            text_search(deps, query, tenant_id, fetch_count, document_ids=document_ids),
             return_exceptions=True,  # Don't fail if one search errors
         )
 
@@ -391,6 +440,8 @@ async def hybrid_search(
         # Graceful degradation: try semantic-only as last resort
         try:
             logger.info("Falling back to semantic search only")
-            return await semantic_search(deps, query, tenant_id, match_count)
+            return await semantic_search(
+                deps, query, tenant_id, match_count, document_ids=document_ids
+            )
         except Exception:
             return []
