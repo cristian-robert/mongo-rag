@@ -69,13 +69,9 @@ async def _run_base_search(
     document_ids: Optional[list[str]] = None,
 ) -> list[SearchResult]:
     if search_type == "semantic":
-        return await semantic_search(
-            deps, query, tenant_id, match_count, document_ids=document_ids
-        )
+        return await semantic_search(deps, query, tenant_id, match_count, document_ids=document_ids)
     if search_type == "text":
-        return await text_search(
-            deps, query, tenant_id, match_count, document_ids=document_ids
-        )
+        return await text_search(deps, query, tenant_id, match_count, document_ids=document_ids)
     return await hybrid_search(
         deps,
         query,

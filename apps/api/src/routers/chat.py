@@ -11,7 +11,7 @@ from src.core.dependencies import AgentDependencies
 from src.core.deps import get_deps
 from src.core.rate_limit_dep import enforce_query_quota
 from src.models.api import ChatRequest, ChatResponse, WSMessage
-from src.services.chat import ChatService, ConversationNotFoundError
+from src.services.chat import BotNotFoundError, ChatService, ConversationNotFoundError
 from src.services.ws_ticket import WSTicketService
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ async def chat_endpoint(
                 conversation_id=body.conversation_id,
                 search_type=body.search_type,
                 retrieval=body.retrieval,
+                bot_id=body.bot_id,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
 
@@ -65,9 +66,12 @@ async def chat_endpoint(
             conversation_id=body.conversation_id,
             search_type=body.search_type,
             retrieval=body.retrieval,
+            bot_id=body.bot_id,
         )
     except ConversationNotFoundError:
         raise HTTPException(status_code=404, detail="Conversation not found")
+    except BotNotFoundError:
+        raise HTTPException(status_code=404, detail="Bot not found")
 
     return ChatResponse(
         answer=result["answer"],
