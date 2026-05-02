@@ -277,3 +277,59 @@ def test_public_bot_404_when_private(bot_client):
 
         response = bot_client.get(f"/api/v1/bots/public/{ObjectId()}")
     assert response.status_code == 404
+
+
+@pytest.mark.unit
+def test_public_bot_response_has_strict_allowlist(bot_client):
+    """Public route must expose ONLY the safe fields — locked by allowlist.
+
+    Even if the service layer accidentally returns extra keys (regression
+    or new field added without the right Pydantic gate), the response
+    must still serialize to exactly the documented public surface. Any
+    new key added to PublicBotResponse must update this test deliberately.
+    """
+    bot_id = str(ObjectId())
+    with patch("src.routers.bots.BotService") as mock_cls:
+        instance = mock_cls.return_value
+        # Service returns a fully-loaded dict including secret fields.
+        # PublicBotResponse must drop everything outside its model.
+        instance.get_public = AsyncMock(
+            return_value={
+                "id": bot_id,
+                "slug": "support-bot",
+                "name": "Support Bot",
+                "welcome_message": "Hi!",
+                "widget_config": {
+                    "primary_color": "#0f172a",
+                    "position": "bottom-right",
+                    "avatar_url": None,
+                },
+                # All of these MUST be filtered out:
+                "tenant_id": "tenant-secret",
+                "system_prompt": "TOP SECRET PROMPT",
+                "document_filter": {"mode": "ids", "document_ids": ["d1"]},
+                "tone": "professional",
+                "model_config": {"temperature": 0.2, "max_tokens": 1024},
+                "is_public": True,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-01T00:00:00Z",
+            }
+        )
+
+        response = bot_client.get(f"/api/v1/bots/public/{bot_id}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert set(data.keys()) == {
+        "id",
+        "slug",
+        "name",
+        "welcome_message",
+        "widget_config",
+    }
+    # widget_config also has its own strict shape.
+    assert set(data["widget_config"].keys()) == {
+        "primary_color",
+        "position",
+        "avatar_url",
+    }
