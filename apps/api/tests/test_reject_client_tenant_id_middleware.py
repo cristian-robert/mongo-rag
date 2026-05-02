@@ -65,6 +65,7 @@ def test_clean_request_passes(client) -> None:
             conversation_id=None,
             search_type=None,
             retrieval=None,
+            bot_id=None,
         ):
             assert tenant_id == MOCK_TENANT_ID
             return {
