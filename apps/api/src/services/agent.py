@@ -1,6 +1,7 @@
 """RAG agent with tenant-aware search."""
 
 import logging
+from typing import Optional
 
 from pydantic_ai import Agent
 
@@ -13,17 +14,25 @@ from src.services.search import hybrid_search, semantic_search, text_search
 logger = logging.getLogger(__name__)
 
 
-def create_rag_agent(product_name: str = "this product") -> Agent:
+def create_rag_agent(
+    system_prompt: Optional[str] = None,
+    product_name: str = "this product",
+) -> Agent:
     """Create a RAG agent with a tenant-customized system prompt.
 
     Args:
-        product_name: Tenant's product name for prompt personalization.
+        system_prompt: When provided, used as the agent's full system prompt
+            verbatim (overrides ``product_name``). This is how a bot's stored
+            ``system_prompt`` enters the chat path — see
+            ``ChatService._compose_system_prompt`` (#85).
+        product_name: Tenant's product name for prompt personalization. Only
+            consulted when ``system_prompt`` is ``None``.
 
     Returns:
         Configured Pydantic AI Agent.
     """
-    system_prompt = build_system_prompt(product_name)
-    agent = Agent(get_llm_model(), system_prompt=system_prompt)
+    final_prompt = system_prompt if system_prompt else build_system_prompt(product_name)
+    agent = Agent(get_llm_model(), system_prompt=final_prompt)
     return agent
 
 

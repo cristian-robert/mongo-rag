@@ -96,6 +96,61 @@ def test_chat_valid_request_returns_response(app_client):
 
 
 @pytest.mark.unit
+def test_chat_request_threads_bot_id_to_service(app_client):
+    """The router must forward body.bot_id to ChatService.handle_message."""
+    client, _ = app_client
+
+    captured: dict = {}
+
+    with patch("src.routers.chat.ChatService") as mock_chat_cls:
+        mock_chat = MagicMock()
+
+        async def fake_handle(**kwargs):
+            captured.update(kwargs)
+            return {
+                "answer": "ok",
+                "sources": [],
+                "citations": [],
+                "conversation_id": "conv-1",
+                "rewritten_queries": [],
+            }
+
+        mock_chat.handle_message = AsyncMock(side_effect=fake_handle)
+        mock_chat_cls.return_value = mock_chat
+
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "hi", "bot_id": "650000000000000000000001"},
+            headers=make_auth_header(),
+        )
+
+    assert response.status_code == 200
+    assert captured.get("bot_id") == "650000000000000000000001"
+
+
+@pytest.mark.unit
+def test_chat_returns_404_for_unknown_bot_id(app_client):
+    """Unresolvable bot_id (cross-tenant or unknown) maps to 404."""
+    client, _ = app_client
+
+    with patch("src.routers.chat.ChatService") as mock_chat_cls:
+        mock_chat = MagicMock()
+        from src.services.chat import BotNotFoundError
+
+        mock_chat.handle_message = AsyncMock(side_effect=BotNotFoundError("no"))
+        mock_chat_cls.return_value = mock_chat
+
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "hi", "bot_id": "650000000000000000000001"},
+            headers=make_auth_header(),
+        )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Bot not found"
+
+
+@pytest.mark.unit
 def test_chat_conversation_not_found(app_client):
     """Chat with nonexistent conversation_id returns 404."""
     client, mock_deps = app_client

@@ -178,6 +178,16 @@ class ChatRequest(StrictRequest):
     retrieval: Optional[RetrievalConfig] = Field(
         default=None, description="Optional per-request retrieval tuning."
     )
+    bot_id: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Bot id resolved against the authenticated tenant. Optional for "
+            "dashboard / programmatic callers (defaults to the legacy generic "
+            "system prompt). When set, the bot's stored system_prompt, tone, "
+            "and document_filter are honored on this chat turn."
+        ),
+    )
 
 
 class SourceReference(BaseModel):

@@ -42,6 +42,11 @@ class RetrievalOptions:
     rerank: Optional[bool] = None
     rerank_top_n: Optional[int] = None
     query_rewrite: Optional[bool] = None
+    # Optional whitelist of document_ids (string ObjectIds). When set,
+    # search calls restrict their results to these documents in addition
+    # to the mandatory tenant_id filter. Used to honour a bot's
+    # ``document_filter`` (#85).
+    document_ids: Optional[tuple[str, ...]] = None
 
 
 @dataclass
@@ -61,17 +66,19 @@ async def _run_base_search(
     search_type: str,
     match_count: int,
     rrf_k: int,
+    document_ids: Optional[list[str]] = None,
 ) -> list[SearchResult]:
     if search_type == "semantic":
-        return await semantic_search(deps, query, tenant_id, match_count)
+        return await semantic_search(deps, query, tenant_id, match_count, document_ids=document_ids)
     if search_type == "text":
-        return await text_search(deps, query, tenant_id, match_count)
+        return await text_search(deps, query, tenant_id, match_count, document_ids=document_ids)
     return await hybrid_search(
         deps,
         query,
         tenant_id,
         match_count=match_count,
         rrf_k=rrf_k,
+        document_ids=document_ids,
     )
 
 
@@ -115,9 +122,19 @@ async def retrieve(
     # Over-fetch a bit since the reranker may still cull aggressively below.
     fetch_count = max(match_count, getattr(settings, "rerank_top_n", match_count))
 
+    document_ids = list(opts.document_ids) if opts.document_ids else None
+
     fetched_lists = await asyncio.gather(
         *[
-            _run_base_search(deps, q, tenant_id, opts.search_type, fetch_count, rrf_k)
+            _run_base_search(
+                deps,
+                q,
+                tenant_id,
+                opts.search_type,
+                fetch_count,
+                rrf_k,
+                document_ids=document_ids,
+            )
             for q in queries
         ],
         return_exceptions=True,

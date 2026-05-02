@@ -235,6 +235,41 @@ async def test_retrieve_handles_partial_subquery_failure():
 
 
 @pytest.mark.asyncio
+async def test_retrieve_passes_document_ids_to_search():
+    """document_ids on options must reach the underlying search call."""
+    deps = _FakeDeps()
+    captured: dict[str, Any] = {}
+
+    async def fake_hybrid(d, q, tenant_id, **kwargs):
+        captured.update(kwargs)
+        return [_mk("a")]
+
+    with patch("src.services.retrieval.hybrid_search", new=fake_hybrid):
+        await retrieve(
+            deps,
+            "q",
+            "t1",
+            options=RetrievalOptions(document_ids=("60a000000000000000000001",)),
+        )
+    assert captured.get("document_ids") == ["60a000000000000000000001"]
+
+
+@pytest.mark.asyncio
+async def test_retrieve_omits_document_ids_when_unset():
+    """When options.document_ids is None, search receives no doc filter."""
+    deps = _FakeDeps()
+    captured: dict[str, Any] = {}
+
+    async def fake_hybrid(d, q, tenant_id, **kwargs):
+        captured.update(kwargs)
+        return [_mk("a")]
+
+    with patch("src.services.retrieval.hybrid_search", new=fake_hybrid):
+        await retrieve(deps, "q", "t1")
+    assert captured.get("document_ids") is None
+
+
+@pytest.mark.asyncio
 async def test_retrieve_match_count_clamped_to_max():
     deps = _FakeDeps()
     deps.settings.max_match_count = 3

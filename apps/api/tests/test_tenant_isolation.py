@@ -30,6 +30,7 @@ def test_chat_tenant_a_cannot_see_tenant_b_conversations(client, mock_deps):
             conversation_id=None,
             search_type=None,
             retrieval=None,
+            bot_id=None,
         ):
             captured_tenant_ids.append(tenant_id)
             return {
