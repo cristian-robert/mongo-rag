@@ -176,7 +176,7 @@ async def create_key(
         )
     logger.info(
         "api_key_created",
-        extra={"tenant_id": tenant_id, "key_prefix": gen.prefix, "name": name},
+        extra={"tenant_id": tenant_id, "key_prefix": gen.prefix, "key_name": name},
     )
     return {
         "id": str(row["id"]),

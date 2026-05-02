@@ -1,13 +1,17 @@
 /**
  * Backend client for the chat widget.
  *
- * Uses fetch + ReadableStream to consume the FastAPI Server-Sent-Events
- * endpoint at POST /api/v1/chat (Accept: text/event-stream).
+ * NOTE (issue #84, temporary): the widget targets the JSON (non-streaming)
+ * path of POST /api/v1/chat instead of SSE. The SSE path is broken end-to-end
+ * because every BaseHTTPMiddleware in apps/api corrupts the receive channel
+ * around StreamingResponse, tearing the stream after the first chunk. Once
+ * those middlewares are rewritten as pure ASGI (#84), restore Accept:
+ * text/event-stream below and remove the JSON adapter in startChatStream.
  *
  * Auth: `Authorization: Bearer <apiKey>` per src/core/tenant.py.
  */
 
-import type { SSEEvent } from "./types.js";
+import type { ChatSource, SSEEvent } from "./types.js";
 
 export interface ChatRequestBody {
   message: string;
@@ -19,7 +23,7 @@ export function buildAuthHeaders(apiKey: string): Record<string, string> {
   return {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
-    Accept: "text/event-stream",
+    Accept: "application/json",
   };
 }
 
@@ -47,7 +51,7 @@ export async function startChatStream(opts: StreamOptions): Promise<StreamResult
     ...(opts.signal ? { signal: opts.signal } : {}),
   });
 
-  if (!response.ok || !response.body) {
+  if (!response.ok) {
     return {
       ok: false,
       status: response.status,
@@ -58,8 +62,27 @@ export async function startChatStream(opts: StreamOptions): Promise<StreamResult
   return {
     ok: true,
     status: response.status,
-    events: parseSSE(response.body),
+    events: jsonResponseToEvents(response),
   };
+}
+
+interface ChatJsonResponse {
+  answer: string;
+  sources?: ChatSource[];
+  conversation_id?: string;
+}
+
+async function* jsonResponseToEvents(
+  response: Response,
+): AsyncGenerator<SSEEvent, void, void> {
+  const data = (await response.json()) as ChatJsonResponse;
+  if (Array.isArray(data.sources) && data.sources.length > 0) {
+    yield { type: "sources", sources: data.sources };
+  }
+  if (typeof data.answer === "string" && data.answer.length > 0) {
+    yield { type: "token", content: data.answer };
+  }
+  yield { type: "done", conversation_id: data.conversation_id };
 }
 
 async function* emptyAsyncIterable(): AsyncIterable<SSEEvent> {

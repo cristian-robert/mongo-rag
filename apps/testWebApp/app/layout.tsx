@@ -34,7 +34,16 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <script
+          src="/widget.js"
+          data-api-key="mrag_zsdCxsKkTNuqSn0-DdsNeH6rk28rjnDCZNlT2b1woDrxIJsa"
+          data-bot-id="69f613da2ad73cc3eb1bb748"
+          data-api-url="http://localhost:8100"
+          defer
+        />
+      </body>
     </html>
   );
 }

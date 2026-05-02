@@ -24,21 +24,30 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
     image: mongorag-api:dev
-    command: ["celery", "-A", "src.worker", "worker", "--loglevel=info", "--concurrency=2"]
     env_file:
       - path: ./apps/api/.env
         required: false
     environment:
+      # The Dockerfile sets ENTRYPOINT=entrypoint.sh, which dispatches on
+      # PROCESS_TYPE (default "api" → uvicorn). Override to launch celery.
+      # `command:` would be ignored — the entrypoint script doesn't read $@.
+      PROCESS_TYPE: worker
       # Worker stays on the docker network — talks to redis by service name.
       REDIS_URL: redis://redis:6379/0
       # BlobStore: filesystem mode shares uploads with the host API via
-      # the bind-mounted ./.tmp/uploads directory below.
+      # an identical absolute path on host and container, so file:// URIs
+      # produced by the API resolve verbatim inside the worker.
       BLOB_STORE: fs
-      UPLOAD_TEMP_DIR: /workspace/.tmp/uploads
+      # The host API embeds an absolute file:// URI in the Celery payload.
+      # The worker resolves that URI verbatim, so the same absolute path
+      # must exist (and contain the same bytes) inside the container.
+      # Using a path under the repo root keeps it inside the macOS
+      # docker VM's default $HOME share (Colima/OrbStack/Rancher), which
+      # is not the case for /tmp or /private/tmp. Must match
+      # apps/api/.env:UPLOAD_TEMP_DIR.
+      UPLOAD_TEMP_DIR: /Users/cristian-robertiosef/Desktop/Dev/mongo-rag/.tmp/uploads
     volumes:
-      # Bind-mount host uploads dir so host API and container worker
-      # see the same physical bytes for file:///workspace/.tmp/uploads/* URIs.
-      - ./.tmp/uploads:/workspace/.tmp/uploads:rw
+      - ./.tmp/uploads:/Users/cristian-robertiosef/Desktop/Dev/mongo-rag/.tmp/uploads:rw
     depends_on:
       redis:
         condition: service_healthy

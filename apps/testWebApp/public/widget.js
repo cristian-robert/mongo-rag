@@ -1,0 +1,1 @@
+../../../packages/widget/dist/widget.js
