@@ -1,11 +1,20 @@
-"""HTTP middleware: tenant guard, security headers, body-size limits."""
+"""HTTP middleware: tenant guard, security headers, body-size limits.
+
+All middlewares in this module are **pure ASGI** — they implement
+``async def __call__(scope, receive, send)`` directly rather than
+subclassing ``starlette.middleware.base.BaseHTTPMiddleware``. The latter
+is incompatible with ``StreamingResponse``/SSE: its ``receive``-channel
+wrapper raises ``RuntimeError: Unexpected message received: http.request``
+mid-stream when the streaming response code calls ``receive()`` to listen
+for client disconnect (encode/starlette#1012, #1438). Pure ASGI passes
+``receive``/``send`` straight through and is fully streaming-safe.
+"""
 
 import json
 import logging
 
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +50,33 @@ _BODY_SIZE_EXEMPT_PREFIXES = (
 )
 
 
-class TenantGuardMiddleware(BaseHTTPMiddleware):
+def _header_value(scope: Scope, name: str) -> str | None:
+    """Return the first matching header value from an ASGI scope, or None.
+
+    Header names are matched case-insensitively (ASGI guarantees lowercase keys
+    on incoming requests, but we lower() defensively).
+    """
+    needle = name.lower().encode("latin-1")
+    for raw_name, raw_value in scope.get("headers", []):
+        if raw_name.lower() == needle:
+            try:
+                return raw_value.decode("latin-1")
+            except UnicodeDecodeError:
+                return None
+    return None
+
+
+def _query_params(scope: Scope) -> dict[str, list[str]]:
+    """Parse the query string from an ASGI scope into a dict."""
+    from urllib.parse import parse_qs
+
+    raw = scope.get("query_string", b"")
+    if not raw:
+        return {}
+    return parse_qs(raw.decode("latin-1"), keep_blank_values=True)
+
+
+class TenantGuardMiddleware:
     """Log a warning if a protected route completes without tenant context.
 
     This is a safety net, not primary enforcement. Primary enforcement
@@ -50,39 +85,57 @@ class TenantGuardMiddleware(BaseHTTPMiddleware):
     Never blocks requests -- observability only.
     """
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        # Initialize tenant_id state so hasattr checks work
-        request.state.tenant_id = None
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
 
-        response = await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        path = request.url.path
+        # Initialize tenant_id state so handlers/downstream see a known key.
+        # FastAPI populates ``scope["state"]`` per request and exposes it as
+        # ``request.state``; setting it here mirrors the BaseHTTPMiddleware
+        # version's ``request.state.tenant_id = None`` behavior.
+        state = scope.setdefault("state", {})
+        state.setdefault("tenant_id", None)
 
-        # Skip exempt routes
-        if any(path.startswith(prefix) for prefix in _EXEMPT_PREFIXES):
-            return response
+        status_code = 500
 
-        # Only check /api/v1/ routes
-        if not path.startswith("/api/v1/"):
-            return response
+        async def send_wrapper(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            await send(message)
 
-        # Only warn on successful responses — 401/403 are expected when
-        # auth fails, and warning on those creates noise.
-        if response.status_code >= 400:
-            return response
+        try:
+            await self.app(scope, receive, send_wrapper)
+        finally:
+            path: str = scope["path"]
 
-        # Check if tenant context was set
-        tenant_id = getattr(request.state, "tenant_id", None)
-        if not tenant_id:
-            logger.warning(
-                "tenant_id not set for protected route",
-                extra={"path": path, "method": request.method},
-            )
+            # Skip exempt routes
+            if any(path.startswith(prefix) for prefix in _EXEMPT_PREFIXES):
+                return
 
-        return response
+            # Only check /api/v1/ routes
+            if not path.startswith("/api/v1/"):
+                return
+
+            # Only warn on successful responses — 401/403 are expected when
+            # auth fails, and warning on those creates noise.
+            if status_code >= 400:
+                return
+
+            # Check if tenant context was set
+            tenant_id = scope.get("state", {}).get("tenant_id")
+            if not tenant_id:
+                logger.warning(
+                    "tenant_id not set for protected route",
+                    extra={"path": path, "method": scope.get("method", "")},
+                )
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+class SecurityHeadersMiddleware:
     """Attach baseline security response headers to every response.
 
     The dashboard CSP lives in the Next.js layer (next.config.ts). Here we
@@ -90,38 +143,56 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     being reflected/embedded by malicious origins.
     """
 
-    def __init__(self, app, *, is_production: bool = False) -> None:
-        super().__init__(app)
-        self._is_production = is_production
-
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        response = await call_next(request)
-        headers = response.headers
-
-        headers.setdefault("X-Content-Type-Options", "nosniff")
-        headers.setdefault("X-Frame-Options", "DENY")
-        headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        headers.setdefault(
-            "Permissions-Policy",
-            "geolocation=(), microphone=(), camera=(), payment=()",
-        )
-        headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-        headers.setdefault("Cross-Origin-Resource-Policy", "same-site")
-
+    # Static defaults applied to every response. Order doesn't matter — we
+    # use setdefault semantics, so if the route already set a value (e.g.
+    # SSE's ``Cache-Control: no-cache``) we leave it alone.
+    _DEFAULT_HEADERS: tuple[tuple[bytes, bytes], ...] = (
+        (b"x-content-type-options", b"nosniff"),
+        (b"x-frame-options", b"DENY"),
+        (b"referrer-policy", b"strict-origin-when-cross-origin"),
+        (
+            b"permissions-policy",
+            b"geolocation=(), microphone=(), camera=(), payment=()",
+        ),
+        (b"cross-origin-opener-policy", b"same-origin"),
+        (b"cross-origin-resource-policy", b"same-site"),
         # API responses should never be cached by intermediaries by default.
         # Individual handlers (e.g. SSE) override Cache-Control intentionally.
-        headers.setdefault("Cache-Control", "no-store")
+        (b"cache-control", b"no-store"),
+    )
+    _HSTS_HEADER: tuple[bytes, bytes] = (
+        b"strict-transport-security",
+        b"max-age=63072000; includeSubDomains; preload",
+    )
 
-        if self._is_production:
-            headers.setdefault(
-                "Strict-Transport-Security",
-                "max-age=63072000; includeSubDomains; preload",
-            )
+    def __init__(self, app: ASGIApp, *, is_production: bool = False) -> None:
+        self.app = app
+        self._is_production = is_production
 
-        return response
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def send_wrapper(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                # Lowercase-name set so we don't overwrite headers the route
+                # already produced (setdefault semantics).
+                seen = {name.lower() for name, _ in headers}
+                for name, value in self._DEFAULT_HEADERS:
+                    if name not in seen:
+                        headers.append((name, value))
+                        seen.add(name)
+                if self._is_production and self._HSTS_HEADER[0] not in seen:
+                    headers.append(self._HSTS_HEADER)
+                message["headers"] = headers
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
 
 
-class RejectClientTenantIdMiddleware(BaseHTTPMiddleware):
+class RejectClientTenantIdMiddleware:
     """Reject any inbound request that tries to supply ``tenant_id`` itself.
 
     Tenant identity is derived server-side from the authenticated Principal.
@@ -135,60 +206,137 @@ class RejectClientTenantIdMiddleware(BaseHTTPMiddleware):
     the handler can see is the authenticated one.
     """
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path: str = scope["path"]
+
         # Path params are inspected as part of the URL. We refuse the literal
         # segment name ``tenant_id`` anywhere in the path, which catches
         # attempts to forge ``/api/v1/something/tenant_id/<id>``.
-        path = request.url.path
         if "/tenant_id/" in path or path.endswith("/tenant_id"):
-            return JSONResponse(
-                status_code=400,
-                content={"detail": "tenant_id is derived from auth — do not supply it"},
+            await _reject_tenant_id(
+                scope, send, "tenant_id is derived from auth — do not supply it"
             )
+            return
 
         # Query string scan — cheap, runs first.
-        if "tenant_id" in request.query_params:
-            return JSONResponse(
-                status_code=400,
-                content={"detail": "tenant_id is derived from auth — do not supply it"},
+        if "tenant_id" in _query_params(scope):
+            await _reject_tenant_id(
+                scope, send, "tenant_id is derived from auth — do not supply it"
             )
+            return
 
         # Body scan — only for JSON content types under the size cap, and
         # only on routes that actually accept JSON bodies. Multipart paths
         # are exempt to keep streaming uploads cheap.
-        method = request.method.upper()
+        method = scope.get("method", "").upper()
         if method in {"POST", "PUT", "PATCH"}:
-            content_type = (request.headers.get("content-type") or "").split(";", 1)[0].strip()
+            content_type_raw = _header_value(scope, "content-type") or ""
+            content_type = content_type_raw.split(";", 1)[0].strip()
             if content_type == "application/json" and not any(
                 path.startswith(p) for p in _TENANT_INPUT_BODY_EXEMPT_PREFIXES
             ):
-                content_length = request.headers.get("content-length")
+                content_length_raw = _header_value(scope, "content-length")
                 try:
-                    declared_size = int(content_length) if content_length is not None else None
+                    declared_size = (
+                        int(content_length_raw) if content_length_raw is not None else None
+                    )
                 except ValueError:
                     declared_size = None
 
                 if declared_size is None or declared_size <= _TENANT_BODY_SCAN_LIMIT_BYTES:
-                    body = await request.body()
-                    if body and len(body) <= _TENANT_BODY_SCAN_LIMIT_BYTES:
-                        if _body_mentions_tenant_id(body):
-                            return JSONResponse(
-                                status_code=400,
-                                content={
-                                    "detail": (
-                                        "tenant_id is derived from auth — "
-                                        "do not include it in the request body"
-                                    )
-                                },
-                            )
+                    body = await _read_body(receive, _TENANT_BODY_SCAN_LIMIT_BYTES)
+                    if body is not None and _body_mentions_tenant_id(body):
+                        await _reject_tenant_id(
+                            scope,
+                            send,
+                            (
+                                "tenant_id is derived from auth — "
+                                "do not include it in the request body"
+                            ),
+                        )
+                        return
 
-                    # Re-attach the consumed body so downstream handlers see it.
-                    async def _replay() -> dict:
-                        return {"type": "http.request", "body": body, "more_body": False}
+                    # Re-attach the buffered body so downstream sees it.
+                    receive = _make_replay_receive(body or b"", original_receive=receive)
 
-                    request._receive = _replay  # type: ignore[attr-defined]
+        await self.app(scope, receive, send)
 
-        return await call_next(request)
+
+async def _reject_tenant_id(scope: Scope, send: Send, detail: str) -> None:
+    """Emit a JSON 400 response framed by Starlette's ``Response``."""
+    body = json.dumps({"detail": detail}).encode("utf-8")
+    # ``Response.__call__`` only uses ``scope["type"]`` and ``send``. Pass
+    # the real scope so any future Starlette enhancement (e.g. HEAD-method
+    # body suppression) works without a behavior change here.
+    await Response(content=body, status_code=400, media_type="application/json")(
+        scope,
+        _no_op_receive,
+        send,
+    )
+
+
+async def _no_op_receive() -> Message:
+    """Receive replacement used when emitting a fixed response.
+
+    Returning ``http.disconnect`` ends any wait if Starlette's response code
+    listens for client disconnects.
+    """
+    return {"type": "http.disconnect"}
+
+
+async def _read_body(receive: Receive, limit: int) -> bytes | None:
+    """Drain the request body up to ``limit`` bytes.
+
+    Returns the buffered bytes, or ``None`` if the body exceeds the limit
+    (in which case the caller should pass the original receive through and
+    skip the scan — matching the BaseHTTPMiddleware version's "too big to
+    scan" behavior).
+    """
+    chunks: list[bytes] = []
+    total = 0
+    more_body = True
+    while more_body:
+        message = await receive()
+        if message["type"] == "http.disconnect":
+            # Client gave up before we finished — replay an empty body so the
+            # downstream app can also observe the disconnect on its own
+            # ``receive()``.
+            return b"".join(chunks)
+        if message["type"] != "http.request":
+            # Non-request messages are unexpected here. Bail out gracefully.
+            break
+        chunk = message.get("body", b"") or b""
+        total += len(chunk)
+        if total > limit:
+            return None
+        chunks.append(chunk)
+        more_body = message.get("more_body", False)
+    return b"".join(chunks)
+
+
+def _make_replay_receive(body: bytes, *, original_receive: Receive) -> Receive:
+    """Build a ``receive`` callable that yields the buffered body once.
+
+    Subsequent calls forward to ``original_receive`` (e.g. so client disconnect
+    messages still propagate).
+    """
+    sent = False
+
+    async def replay() -> Message:
+        nonlocal sent
+        if not sent:
+            sent = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return await original_receive()
+
+    return replay
 
 
 def _body_mentions_tenant_id(body: bytes) -> bool:
@@ -222,7 +370,7 @@ def _contains_tenant_id_key(value: object, depth: int = 0) -> bool:
     return False
 
 
-class BodySizeLimitMiddleware(BaseHTTPMiddleware):
+class BodySizeLimitMiddleware:
     """Reject requests that exceed the configured maximum body size.
 
     Uses the Content-Length header for fast rejection. Multipart upload
@@ -230,32 +378,50 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
     after streaming the body to disk.
     """
 
-    def __init__(self, app, *, max_bytes: int) -> None:
-        super().__init__(app)
+    def __init__(self, app: ASGIApp, *, max_bytes: int) -> None:
+        self.app = app
         self._max_bytes = max_bytes
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        path = request.url.path
-        if any(path.startswith(p) for p in _BODY_SIZE_EXEMPT_PREFIXES):
-            return await call_next(request)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        content_length = request.headers.get("content-length")
-        if content_length is not None:
+        path: str = scope["path"]
+        if any(path.startswith(p) for p in _BODY_SIZE_EXEMPT_PREFIXES):
+            await self.app(scope, receive, send)
+            return
+
+        content_length_raw = _header_value(scope, "content-length")
+        if content_length_raw is not None:
             try:
-                size = int(content_length)
+                size = int(content_length_raw)
             except ValueError:
-                return JSONResponse(
-                    status_code=400,
-                    content={"detail": "Invalid Content-Length header"},
+                await _reject_simple(
+                    scope, send, status=400, detail="Invalid Content-Length header"
                 )
+                return
             if size > self._max_bytes:
                 logger.warning(
                     "request_body_too_large",
                     extra={"path": path, "size": size, "limit": self._max_bytes},
                 )
-                return JSONResponse(
-                    status_code=413,
-                    content={"detail": (f"Request body too large (max {self._max_bytes} bytes)")},
+                await _reject_simple(
+                    scope,
+                    send,
+                    status=413,
+                    detail=f"Request body too large (max {self._max_bytes} bytes)",
                 )
+                return
 
-        return await call_next(request)
+        await self.app(scope, receive, send)
+
+
+async def _reject_simple(scope: Scope, send: Send, *, status: int, detail: str) -> None:
+    """Emit a JSON error response with the given status."""
+    body = json.dumps({"detail": detail}).encode("utf-8")
+    await Response(content=body, status_code=status, media_type="application/json")(
+        scope,
+        _no_op_receive,
+        send,
+    )

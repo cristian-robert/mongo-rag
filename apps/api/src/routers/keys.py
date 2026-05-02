@@ -58,9 +58,7 @@ async def create_key(
 ):
     """Generate a new API key. The raw key is returned once and cannot be retrieved."""
     pool = _require_pool(pool)
-    result = await pg_api_keys.create_key(
-        pool=pool, tenant_id=principal.tenant_id, name=body.name
-    )
+    result = await pg_api_keys.create_key(pool=pool, tenant_id=principal.tenant_id, name=body.name)
     return CreateKeyResponse(
         raw_key=result["raw_key"],
         key_prefix=result["key_prefix"],

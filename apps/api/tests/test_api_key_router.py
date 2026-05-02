@@ -114,9 +114,7 @@ def test_revoke_key_success(keys_client):
     key_id = str(uuid4())
     with patch("src.routers.keys.pg_api_keys.revoke_key", new_callable=AsyncMock) as revoke:
         revoke.return_value = True
-        response = keys_client.delete(
-            f"/api/v1/keys/{key_id}", headers=make_auth_header()
-        )
+        response = keys_client.delete(f"/api/v1/keys/{key_id}", headers=make_auth_header())
 
     assert response.status_code == 200
     assert "revoked" in response.json()["message"].lower()
@@ -127,9 +125,7 @@ def test_revoke_key_not_found(keys_client):
     key_id = str(uuid4())
     with patch("src.routers.keys.pg_api_keys.revoke_key", new_callable=AsyncMock) as revoke:
         revoke.return_value = False
-        response = keys_client.delete(
-            f"/api/v1/keys/{key_id}", headers=make_auth_header()
-        )
+        response = keys_client.delete(f"/api/v1/keys/{key_id}", headers=make_auth_header())
 
     assert response.status_code == 404
 
@@ -138,8 +134,6 @@ def test_revoke_key_not_found(keys_client):
 def test_revoke_key_invalid_id_format(keys_client):
     with patch("src.routers.keys.pg_api_keys.revoke_key", new_callable=AsyncMock) as revoke:
         revoke.side_effect = ValueError("invalid uuid")
-        response = keys_client.delete(
-            "/api/v1/keys/not-a-valid-id", headers=make_auth_header()
-        )
+        response = keys_client.delete("/api/v1/keys/not-a-valid-id", headers=make_auth_header())
 
     assert response.status_code == 400

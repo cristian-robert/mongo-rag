@@ -22,7 +22,7 @@ def test_generate_key_shape():
     gen = api_keys.generate_key()
     assert gen.raw_key.startswith(api_keys.KEY_PREFIX)
     assert len(gen.prefix) == api_keys.PREFIX_LEN
-    body = gen.raw_key[len(api_keys.KEY_PREFIX):]
+    body = gen.raw_key[len(api_keys.KEY_PREFIX) :]
     assert body[: api_keys.PREFIX_LEN] == gen.prefix
     # bcrypt hashes start with $2b$ or $2a$
     assert gen.key_hash.startswith("$2")
@@ -95,9 +95,7 @@ class _FakePool:
 @pytest.mark.asyncio
 async def test_verify_key_returns_principal_on_match():
     gen = api_keys.generate_key()
-    pool = _FakePool(
-        [{"id": "key-uuid", "tenant_id": "tenant-uuid", "key_hash": gen.key_hash}]
-    )
+    pool = _FakePool([{"id": "key-uuid", "tenant_id": "tenant-uuid", "key_hash": gen.key_hash}])
     principal = await api_keys.verify_key(pool, gen.raw_key)
     assert principal is not None
     assert principal.tenant_id == "tenant-uuid"
@@ -120,9 +118,7 @@ async def test_verify_key_returns_none_for_malformed():
 @pytest.mark.asyncio
 async def test_verify_key_bad_password_against_real_hash():
     gen = api_keys.generate_key()
-    pool = _FakePool(
-        [{"id": "k", "tenant_id": "t", "key_hash": gen.key_hash}]
-    )
+    pool = _FakePool([{"id": "k", "tenant_id": "t", "key_hash": gen.key_hash}])
     # Same prefix, different secret → bcrypt mismatch
     fake = api_keys.KEY_PREFIX + gen.prefix + "wrongsecretwrongsecretwrong"
     assert await api_keys.verify_key(pool, fake) is None
@@ -149,8 +145,6 @@ async def test_verify_key_runs_bcrypt_for_every_candidate():
 @pytest.mark.asyncio
 async def test_verify_key_tolerates_malformed_stored_hash():
     """Corrupted DB row must not crash auth — treat as miss."""
-    pool = _FakePool(
-        [{"id": "k", "tenant_id": "t", "key_hash": "not-a-real-bcrypt-hash"}]
-    )
+    pool = _FakePool([{"id": "k", "tenant_id": "t", "key_hash": "not-a-real-bcrypt-hash"}])
     gen = api_keys.generate_key()
     assert await api_keys.verify_key(pool, gen.raw_key) is None

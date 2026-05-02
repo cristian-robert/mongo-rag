@@ -81,7 +81,7 @@ def _extract_prefix(raw_key: str) -> Optional[str]:
     """
     if not raw_key.startswith(KEY_PREFIX):
         return None
-    body = raw_key[len(KEY_PREFIX):]
+    body = raw_key[len(KEY_PREFIX) :]
     if len(body) < PREFIX_LEN:
         return None
     return body[:PREFIX_LEN]
@@ -119,9 +119,7 @@ async def verify_key(pool: asyncpg.Pool, raw_key: str) -> Optional[APIKeyPrincip
             # Malformed stored hash — treat as miss without leaking why.
             ok = False
         if ok and matched is None:
-            matched = APIKeyPrincipal(
-                key_id=str(row["id"]), tenant_id=str(row["tenant_id"])
-            )
+            matched = APIKeyPrincipal(key_id=str(row["id"]), tenant_id=str(row["tenant_id"]))
 
     if matched is not None:
         _schedule_last_used_update(pool, matched.key_id)

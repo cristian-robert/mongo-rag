@@ -55,3 +55,6 @@ MongoDB-RAG-Agent-main/
 
 # BlobStore local-dev uploads
 .tmp/
+
+# Git worktrees (Superpowers parallel-agent dispatch)
+.worktrees/
