@@ -220,12 +220,16 @@ class RejectClientTenantIdMiddleware:
         # segment name ``tenant_id`` anywhere in the path, which catches
         # attempts to forge ``/api/v1/something/tenant_id/<id>``.
         if "/tenant_id/" in path or path.endswith("/tenant_id"):
-            await _reject_tenant_id(send, "tenant_id is derived from auth — do not supply it")
+            await _reject_tenant_id(
+                scope, send, "tenant_id is derived from auth — do not supply it"
+            )
             return
 
         # Query string scan — cheap, runs first.
         if "tenant_id" in _query_params(scope):
-            await _reject_tenant_id(send, "tenant_id is derived from auth — do not supply it")
+            await _reject_tenant_id(
+                scope, send, "tenant_id is derived from auth — do not supply it"
+            )
             return
 
         # Body scan — only for JSON content types under the size cap, and
@@ -250,6 +254,7 @@ class RejectClientTenantIdMiddleware:
                     body = await _read_body(receive, _TENANT_BODY_SCAN_LIMIT_BYTES)
                     if body is not None and _body_mentions_tenant_id(body):
                         await _reject_tenant_id(
+                            scope,
                             send,
                             (
                                 "tenant_id is derived from auth — "
@@ -264,14 +269,14 @@ class RejectClientTenantIdMiddleware:
         await self.app(scope, receive, send)
 
 
-async def _reject_tenant_id(send: Send, detail: str) -> None:
+async def _reject_tenant_id(scope: Scope, send: Send, detail: str) -> None:
     """Emit a JSON 400 response framed by Starlette's ``Response``."""
     body = json.dumps({"detail": detail}).encode("utf-8")
+    # ``Response.__call__`` only uses ``scope["type"]`` and ``send``. Pass
+    # the real scope so any future Starlette enhancement (e.g. HEAD-method
+    # body suppression) works without a behavior change here.
     await Response(content=body, status_code=400, media_type="application/json")(
-        # ``Response.__call__`` only uses ``scope`` for "type" lookup and
-        # ``send`` to emit start+body messages. ``receive`` is required by
-        # the signature but not consumed for fixed-size responses.
-        {"type": "http"},
+        scope,
         _no_op_receive,
         send,
     )
@@ -392,7 +397,9 @@ class BodySizeLimitMiddleware:
             try:
                 size = int(content_length_raw)
             except ValueError:
-                await _reject_simple(send, status=400, detail="Invalid Content-Length header")
+                await _reject_simple(
+                    scope, send, status=400, detail="Invalid Content-Length header"
+                )
                 return
             if size > self._max_bytes:
                 logger.warning(
@@ -400,6 +407,7 @@ class BodySizeLimitMiddleware:
                     extra={"path": path, "size": size, "limit": self._max_bytes},
                 )
                 await _reject_simple(
+                    scope,
                     send,
                     status=413,
                     detail=f"Request body too large (max {self._max_bytes} bytes)",
@@ -409,11 +417,11 @@ class BodySizeLimitMiddleware:
         await self.app(scope, receive, send)
 
 
-async def _reject_simple(send: Send, *, status: int, detail: str) -> None:
+async def _reject_simple(scope: Scope, send: Send, *, status: int, detail: str) -> None:
     """Emit a JSON error response with the given status."""
     body = json.dumps({"detail": detail}).encode("utf-8")
     await Response(content=body, status_code=status, media_type="application/json")(
-        {"type": "http"},
+        scope,
         _no_op_receive,
         send,
     )
