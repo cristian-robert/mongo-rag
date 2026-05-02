@@ -15,6 +15,7 @@ export interface ChatRequestBody {
   message: string;
   conversation_id?: string;
   search_type?: "hybrid" | "semantic" | "text";
+  bot_id?: string;
 }
 
 export function buildAuthHeaders(apiKey: string): Record<string, string> {

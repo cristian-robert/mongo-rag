@@ -21,6 +21,25 @@ interface WidgetHandle {
   destroy: () => void;
 }
 
+/**
+ * Build the POST /api/v1/chat request body from the live widget config.
+ *
+ * `bot_id` is included only when configured (so backends still operating
+ * without bot resolution see exactly the same payload as before #86). The
+ * server is responsible for tying the `bot_id` to the API key's tenant —
+ * the widget never claims authority for tenancy.
+ */
+export function buildChatBody(
+  config: WidgetConfig,
+  message: string,
+  conversationId: string | undefined,
+): ChatRequestBody {
+  const body: ChatRequestBody = { message };
+  if (conversationId) body.conversation_id = conversationId;
+  if (config.botId) body.bot_id = config.botId;
+  return body;
+}
+
 export function mountWidget(config: WidgetConfig): WidgetHandle {
   const host = document.createElement("div");
   host.setAttribute("data-mongorag-widget", "");
@@ -80,8 +99,7 @@ export function mountWidget(config: WidgetConfig): WidgetHandle {
     state.messages.push(assistantMsg);
     renderMessages();
 
-    const body: ChatRequestBody = { message: text };
-    if (state.conversationId) body.conversation_id = state.conversationId;
+    const body = buildChatBody(config, text, state.conversationId);
 
     const abort = new AbortController();
     state.abort = abort;
