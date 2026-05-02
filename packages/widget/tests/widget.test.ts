@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { applyEvent } from "../src/widget.js";
-import type { ChatMessage, SSEEvent } from "../src/types.js";
+import { applyEvent, buildChatBody } from "../src/widget.js";
+import type { ChatMessage, SSEEvent, WidgetConfig } from "../src/types.js";
+
+function baseConfig(): WidgetConfig {
+  return {
+    apiKey: "mrag_test",
+    apiUrl: "https://api.example.test",
+    primaryColor: "#0f172a",
+    botName: "Assistant",
+    welcomeMessage: "Hi",
+    position: "bottom-right",
+    showBranding: true,
+  };
+}
 
 function makeMsg(): ChatMessage {
   return { role: "assistant", content: "", pending: true };
@@ -59,5 +71,35 @@ describe("applyEvent", () => {
     applyEvent({ type: "weird" } as SSEEvent, msg, () => {});
     expect(msg.content).toBe("");
     expect(msg.pending).toBe(true);
+  });
+});
+
+describe("buildChatBody", () => {
+  it("includes only message when no bot_id or conversation_id", () => {
+    const cfg = baseConfig();
+    const body = buildChatBody(cfg, "hello", undefined);
+    expect(body).toEqual({ message: "hello" });
+  });
+
+  it("includes bot_id when config.botId is set", () => {
+    const cfg: WidgetConfig = { ...baseConfig(), botId: "bot_abc" };
+    const body = buildChatBody(cfg, "hello", undefined);
+    expect(body.bot_id).toBe("bot_abc");
+  });
+
+  it("omits bot_id when config.botId is undefined", () => {
+    const cfg = baseConfig();
+    const body = buildChatBody(cfg, "hello", undefined);
+    expect("bot_id" in body).toBe(false);
+  });
+
+  it("includes conversation_id when provided", () => {
+    const cfg: WidgetConfig = { ...baseConfig(), botId: "bot_abc" };
+    const body = buildChatBody(cfg, "hello", "conv_123");
+    expect(body).toEqual({
+      message: "hello",
+      conversation_id: "conv_123",
+      bot_id: "bot_abc",
+    });
   });
 });

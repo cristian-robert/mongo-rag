@@ -12,6 +12,12 @@
 
 import { startChatStream, type ChatRequestBody } from "./api.js";
 import { buildStyles } from "./styles.js";
+import {
+  fetchPublicBotConfig as defaultFetchPublic,
+  mergePublicConfig,
+  type PublicBotConfig,
+} from "./publicBot.js";
+import type { RawConfigInput } from "./config.js";
 import type { ChatMessage, ChatSource, SSEEvent, WidgetConfig } from "./types.js";
 
 const STORAGE_KEY_PREFIX = "mongorag.conversation_id:";
@@ -21,7 +27,49 @@ interface WidgetHandle {
   destroy: () => void;
 }
 
-export function mountWidget(config: WidgetConfig): WidgetHandle {
+/**
+ * Optional bootstrap seam. When `rawInput` and `fetchPublic` are both
+ * supplied, mountWidget will fetch the public bot config and apply
+ * server values for any field the embed didn't set explicitly. The
+ * `onConfigUpdate` callback is fired once the merged config is live —
+ * primarily used by tests to observe the merge result without poking
+ * at the closed shadow root.
+ */
+export interface MountOptions {
+  rawInput?: RawConfigInput;
+  fetchPublic?: (
+    apiUrl: string,
+    botId: string,
+    signal?: AbortSignal,
+  ) => Promise<PublicBotConfig | null>;
+  onConfigUpdate?: (config: WidgetConfig) => void;
+}
+
+/**
+ * Build the POST /api/v1/chat request body from the live widget config.
+ *
+ * `bot_id` is included only when configured (so backends still operating
+ * without bot resolution see exactly the same payload as before #86). The
+ * server is responsible for tying the `bot_id` to the API key's tenant —
+ * the widget never claims authority for tenancy.
+ */
+export function buildChatBody(
+  config: WidgetConfig,
+  message: string,
+  conversationId: string | undefined,
+): ChatRequestBody {
+  const body: ChatRequestBody = { message };
+  if (conversationId) body.conversation_id = conversationId;
+  if (config.botId) body.bot_id = config.botId;
+  return body;
+}
+
+export function mountWidget(config: WidgetConfig, options: MountOptions = {}): WidgetHandle {
+  // Live config snapshot. Mutated in place by applyConfigUpdate so all
+  // closures capture the same reference and see the latest cosmetics
+  // after the public-config fetch resolves.
+  let liveConfig: WidgetConfig = { ...config };
+
   const host = document.createElement("div");
   host.setAttribute("data-mongorag-widget", "");
   host.style.cssText = "all: initial;";
@@ -30,11 +78,11 @@ export function mountWidget(config: WidgetConfig): WidgetHandle {
   const root = host.attachShadow({ mode: "closed" });
 
   const style = document.createElement("style");
-  style.textContent = buildStyles({ primaryColor: config.primaryColor });
+  style.textContent = buildStyles({ primaryColor: liveConfig.primaryColor });
   root.appendChild(style);
 
-  const launcher = createLauncher(config);
-  const panel = createPanel(config);
+  const launcher = createLauncher(liveConfig);
+  const panel = createPanel(liveConfig);
   root.appendChild(launcher);
   root.appendChild(panel.element);
 
@@ -43,7 +91,7 @@ export function mountWidget(config: WidgetConfig): WidgetHandle {
     sending: false,
     messages: [] as ChatMessage[],
     abort: null as AbortController | null,
-    conversationId: loadConversationId(config.apiKey),
+    conversationId: loadConversationId(liveConfig.apiKey),
   };
 
   function setOpen(open: boolean): void {
@@ -52,7 +100,7 @@ export function mountWidget(config: WidgetConfig): WidgetHandle {
     launcher.setAttribute("aria-expanded", String(open));
     if (open) {
       if (state.messages.length === 0) {
-        state.messages.push({ role: "assistant", content: config.welcomeMessage });
+        state.messages.push({ role: "assistant", content: liveConfig.welcomeMessage });
         renderMessages();
       }
       requestAnimationFrame(() => panel.input.focus());
@@ -65,6 +113,49 @@ export function mountWidget(config: WidgetConfig): WidgetHandle {
       panel.messages.appendChild(renderMessage(msg));
     }
     panel.messages.scrollTop = panel.messages.scrollHeight;
+  }
+
+  /**
+   * Apply a fresh config to the live widget — restyle the shadow root,
+   * relabel launcher + panel, swap position class, and refresh any
+   * not-yet-shown welcome message. Existing user/assistant turns are
+   * preserved so re-skinning never destroys conversation state.
+   */
+  function applyConfigUpdate(next: WidgetConfig): void {
+    const prev = liveConfig;
+    liveConfig = next;
+
+    if (prev.primaryColor !== next.primaryColor) {
+      style.textContent = buildStyles({ primaryColor: next.primaryColor });
+    }
+
+    if (prev.botName !== next.botName) {
+      launcher.setAttribute("aria-label", `Open chat with ${next.botName}`);
+      panel.title.textContent = next.botName;
+      panel.element.setAttribute("aria-label", `${next.botName} chat`);
+    }
+
+    if (prev.position !== next.position) {
+      const oldClass = `mrag-pos-${prev.position === "bottom-left" ? "left" : "right"}`;
+      const newClass = `mrag-pos-${next.position === "bottom-left" ? "left" : "right"}`;
+      launcher.classList.remove(oldClass);
+      launcher.classList.add(newClass);
+      panel.element.classList.remove(oldClass);
+      panel.element.classList.add(newClass);
+    }
+
+    // If only the seeded welcome message is in the log, refresh it too.
+    if (
+      prev.welcomeMessage !== next.welcomeMessage &&
+      state.messages.length === 1 &&
+      state.messages[0]?.role === "assistant" &&
+      state.messages[0]?.content === prev.welcomeMessage
+    ) {
+      state.messages[0].content = next.welcomeMessage;
+      renderMessages();
+    }
+
+    options.onConfigUpdate?.(next);
   }
 
   async function send(rawText: string): Promise<void> {
@@ -80,16 +171,15 @@ export function mountWidget(config: WidgetConfig): WidgetHandle {
     state.messages.push(assistantMsg);
     renderMessages();
 
-    const body: ChatRequestBody = { message: text };
-    if (state.conversationId) body.conversation_id = state.conversationId;
+    const body = buildChatBody(liveConfig, text, state.conversationId);
 
     const abort = new AbortController();
     state.abort = abort;
 
     try {
       const result = await startChatStream({
-        apiUrl: config.apiUrl,
-        apiKey: config.apiKey,
+        apiUrl: liveConfig.apiUrl,
+        apiKey: liveConfig.apiKey,
         body,
         signal: abort.signal,
       });
@@ -105,7 +195,7 @@ export function mountWidget(config: WidgetConfig): WidgetHandle {
       for await (const event of result.events) {
         applyEvent(event, assistantMsg, (id) => {
           state.conversationId = id;
-          saveConversationId(config.apiKey, id);
+          saveConversationId(liveConfig.apiKey, id);
         });
         if (event.type === "token") receivedToken = true;
         renderMessages();
@@ -129,6 +219,22 @@ export function mountWidget(config: WidgetConfig): WidgetHandle {
       panel.input.disabled = false;
       panel.input.focus();
     }
+  }
+
+  // Fire the public-config fetch when we have everything needed. The
+  // bubble already rendered with data-* defaults, so this never blocks.
+  if (liveConfig.botId && options.rawInput && (options.fetchPublic || defaultFetchPublic)) {
+    const fetcher = options.fetchPublic ?? defaultFetchPublic;
+    const rawInput = options.rawInput;
+    fetcher(liveConfig.apiUrl, liveConfig.botId)
+      .then((server) => {
+        if (server === null) return;
+        const merged = mergePublicConfig(liveConfig, rawInput, server);
+        applyConfigUpdate(merged);
+      })
+      .catch(() => {
+        // Silent — keep data-* defaults already on screen.
+      });
   }
 
   launcher.addEventListener("click", () => setOpen(!state.open));
@@ -197,6 +303,7 @@ function createLauncher(config: WidgetConfig): HTMLButtonElement {
 
 interface PanelRefs {
   element: HTMLDivElement;
+  title: HTMLHeadingElement;
   messages: HTMLDivElement;
   form: HTMLFormElement;
   input: HTMLTextAreaElement;
@@ -264,7 +371,7 @@ function createPanel(config: WidgetConfig): PanelRefs {
     el.appendChild(footer);
   }
 
-  return { element: el, messages, form, input, send, close };
+  return { element: el, title, messages, form, input, send, close };
 }
 
 function renderMessage(msg: ChatMessage): HTMLDivElement {

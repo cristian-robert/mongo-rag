@@ -16,6 +16,7 @@
  */
 
 import { ConfigError, buildConfig, mergeConfig, parseScriptDataset, type RawConfigInput } from "./config.js";
+import { fetchPublicBotConfig } from "./publicBot.js";
 import { mountWidget } from "./widget.js";
 import type { WidgetConfig } from "./types.js";
 
@@ -57,11 +58,19 @@ function init(): void {
   }
 
   mounted = true;
+  const mountOptions = {
+    rawInput: merged,
+    fetchPublic: fetchPublicBotConfig,
+  };
   // Defer mount until DOM is interactive so document.body exists.
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => mountWidget(config), { once: true });
+    document.addEventListener(
+      "DOMContentLoaded",
+      () => mountWidget(config, mountOptions),
+      { once: true },
+    );
   } else {
-    mountWidget(config);
+    mountWidget(config, mountOptions);
   }
 }
 
