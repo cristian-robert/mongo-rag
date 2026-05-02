@@ -95,7 +95,9 @@ def test_sse_streams_cleanly_through_middleware_stack(caplog) -> None:
 
     # No "Unexpected message received" anywhere — the canonical symptom of
     # the BaseHTTPMiddleware + StreamingResponse incompatibility.
-    error_log = "\n".join(rec.getMessage() + " " + str(rec.exc_info or "") for rec in caplog.records)
+    error_log = "\n".join(
+        rec.getMessage() + " " + str(rec.exc_info or "") for rec in caplog.records
+    )
     assert "Unexpected message received" not in error_log, (
         f"BaseHTTPMiddleware bug regressed:\n{error_log}"
     )
