@@ -5,6 +5,7 @@ exposes a non-secret subset of a bot for widget embedding.
 """
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -18,9 +19,11 @@ from src.models.bot import (
     CreateBotRequest,
     PublicBotResponse,
     UpdateBotRequest,
+    WidgetConfig,
 )
 from src.models.user import UserRole
 from src.services.bot import BotService, BotSlugTakenError
+from src.services.plan import get_tenant_plan, is_paid_plan
 
 logger = logging.getLogger(__name__)
 
@@ -35,14 +38,41 @@ def _get_bot_service(deps: AgentDependencies = Depends(get_deps)) -> BotService:
     return BotService(bots_collection=deps.bots_collection)
 
 
+async def _enforce_branding_plan_gate(
+    widget_config: Optional[WidgetConfig],
+    deps: AgentDependencies,
+    tenant_id: str,
+) -> None:
+    """Reject ``branding_text`` writes from free-tier tenants.
+
+    No-ops when ``widget_config`` is missing from the payload or when
+    ``branding_text`` is unset. Reads the active plan from the Mongo
+    ``subscriptions`` collection via ``get_tenant_plan``.
+    """
+    if widget_config is None or widget_config.branding_text is None:
+        return
+    plan = await get_tenant_plan(deps.subscriptions_collection, tenant_id)
+    if not is_paid_plan(plan):
+        logger.info(
+            "bot_branding_text_blocked_free_tier",
+            extra={"tenant_id": tenant_id, "plan": plan.value},
+        )
+        raise HTTPException(
+            status_code=403,
+            detail="branding_text requires a paid plan",
+        )
+
+
 @router.post("", response_model=BotResponse, status_code=201)
 async def create_bot(
     body: CreateBotRequest,
     principal: Principal = Depends(require_role(UserRole.ADMIN)),
     service: BotService = Depends(_get_bot_service),
+    deps: AgentDependencies = Depends(get_deps),
 ):
     """Create a new bot. Slug must be unique per tenant."""
     tenant_id = principal.tenant_id
+    await _enforce_branding_plan_gate(body.widget_config, deps, tenant_id)
     count = await service.count_for_tenant(tenant_id)
     if count >= MAX_BOTS_PER_TENANT:
         raise HTTPException(
@@ -85,8 +115,10 @@ async def update_bot(
     body: UpdateBotRequest,
     principal: Principal = Depends(require_role(UserRole.ADMIN)),
     service: BotService = Depends(_get_bot_service),
+    deps: AgentDependencies = Depends(get_deps),
 ):
     """Partially update a bot. Slug is immutable."""
+    await _enforce_branding_plan_gate(body.widget_config, deps, principal.tenant_id)
     bot = await service.update(bot_id=bot_id, tenant_id=principal.tenant_id, body=body)
     if bot is None:
         raise HTTPException(status_code=404, detail="Bot not found")
