@@ -17,6 +17,7 @@ import {
   mergePublicConfig,
   type PublicBotConfig,
 } from "./publicBot.js";
+import { RevealScheduler } from "./revealScheduler.js";
 import type { RawConfigInput } from "./config.js";
 import type { ChatMessage, ChatSource, SSEEvent, WidgetConfig } from "./types.js";
 
@@ -91,8 +92,21 @@ export function mountWidget(config: WidgetConfig, options: MountOptions = {}): W
     sending: false,
     messages: [] as ChatMessage[],
     abort: null as AbortController | null,
+    reveal: null as RevealScheduler | null,
+    lastUserText: "",
     conversationId: loadConversationId(liveConfig.apiKey),
   };
+
+  function cancelInFlight(): void {
+    if (state.reveal) {
+      state.reveal.destroy();
+      state.reveal = null;
+    }
+    if (state.abort) {
+      state.abort.abort();
+      state.abort = null;
+    }
+  }
 
   function setOpen(open: boolean): void {
     state.open = open;
@@ -104,6 +118,10 @@ export function mountWidget(config: WidgetConfig, options: MountOptions = {}): W
         renderMessages();
       }
       requestAnimationFrame(() => panel.input.focus());
+    } else {
+      // Closing the panel mid-stream abandons the in-flight request and any
+      // buffered reveal — no DOM mutations after close.
+      cancelInFlight();
     }
   }
 
@@ -160,9 +178,20 @@ export function mountWidget(config: WidgetConfig, options: MountOptions = {}): W
 
   async function send(rawText: string): Promise<void> {
     const text = rawText.trim();
-    if (!text || state.sending) return;
+    if (!text) return;
+    // A new send always supersedes whatever is in flight. Without this,
+    // a fast double-submit would leave two readers fighting over the same
+    // bubble with diverging content.
+    cancelInFlight();
+    if (state.sending) {
+      // The previous run's finally{} block hasn't fired yet — its cleanup
+      // will see state.sending=true and we'd re-enter without resetting
+      // the input. Guard for that.
+      state.sending = false;
+    }
 
     state.sending = true;
+    state.lastUserText = text;
     panel.send.disabled = true;
     panel.input.disabled = true;
 
@@ -175,6 +204,8 @@ export function mountWidget(config: WidgetConfig, options: MountOptions = {}): W
 
     const abort = new AbortController();
     state.abort = abort;
+    const reveal = new RevealScheduler(assistantMsg, () => renderMessages());
+    state.reveal = reveal;
 
     try {
       const result = await startChatStream({
@@ -185,40 +216,77 @@ export function mountWidget(config: WidgetConfig, options: MountOptions = {}): W
       });
 
       if (!result.ok) {
-        assistantMsg.pending = false;
-        assistantMsg.content = errorMessageForStatus(result.status);
+        reveal.destroy();
+        applyError(assistantMsg, errorMessageForStatus(result.status));
         renderMessages();
         return;
       }
 
       let receivedToken = false;
       for await (const event of result.events) {
+        if (abort.signal.aborted) break;
+        if (event.type === "token" && typeof event.content === "string") {
+          reveal.push(event.content);
+          assistantMsg.pending = true;
+          receivedToken = true;
+          continue;
+        }
+        // Sources / done / error: paint everything pending first so the
+        // user sees the full streamed text before citations or error
+        // copy land in the same bubble.
+        reveal.flushImmediate();
         applyEvent(event, assistantMsg, (id) => {
           state.conversationId = id;
           saveConversationId(liveConfig.apiKey, id);
         });
-        if (event.type === "token") receivedToken = true;
         renderMessages();
       }
+      // Drain any buffered text once the stream ends without an explicit
+      // 'done' event (legacy/proxy edge case).
+      reveal.flushImmediate();
       if (!receivedToken && !assistantMsg.content) {
+        applyError(assistantMsg, "No response received. Please try again.");
+        renderMessages();
+      } else if (assistantMsg.pending) {
+        // No 'done' event arrived — clear pending so typing dots vanish.
         assistantMsg.pending = false;
-        assistantMsg.content = "No response received. Please try again.";
         renderMessages();
       }
     } catch (err) {
-      assistantMsg.pending = false;
-      assistantMsg.content =
-        err instanceof DOMException && err.name === "AbortError"
-          ? "Cancelled."
-          : "Couldn't reach the server. Check your connection and try again.";
+      // Abort is silent: don't render "Cancelled." in the bubble, just
+      // remove the empty pending bubble. If content was already streamed
+      // before abort, keep it (better than wiping streamed work).
+      if (err instanceof DOMException && err.name === "AbortError") {
+        if (!assistantMsg.content) {
+          // Drop the empty pending bubble entirely.
+          const idx = state.messages.indexOf(assistantMsg);
+          if (idx !== -1) state.messages.splice(idx, 1);
+        } else {
+          assistantMsg.pending = false;
+        }
+        renderMessages();
+        return;
+      }
+      reveal.destroy();
+      applyError(
+        assistantMsg,
+        "Couldn't reach the server. Check your connection and try again.",
+      );
       renderMessages();
     } finally {
       state.sending = false;
-      state.abort = null;
+      if (state.abort === abort) state.abort = null;
+      if (state.reveal === reveal) state.reveal = null;
       panel.send.disabled = false;
       panel.input.disabled = false;
       panel.input.focus();
     }
+  }
+
+  function retryLast(): void {
+    const text = state.lastUserText;
+    if (!text) return;
+    void send(text);
   }
 
   // Fire the public-config fetch when we have everything needed. The
@@ -261,12 +329,32 @@ export function mountWidget(config: WidgetConfig, options: MountOptions = {}): W
 
   panel.input.addEventListener("input", () => autoresize(panel.input));
 
+  // Event delegation for the retry button — added to assistant error
+  // bubbles by renderMessage. Lives on the messages container so we
+  // don't need a separate listener per bubble (and bubbles get rebuilt
+  // on every renderMessages() call).
+  panel.messages.addEventListener("click", (e) => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const btn = target.closest("[data-mrag-retry]");
+    if (btn) {
+      e.preventDefault();
+      retryLast();
+    }
+  });
+
   return {
     destroy() {
-      state.abort?.abort();
+      cancelInFlight();
       host.remove();
     },
   };
+}
+
+function applyError(msg: ChatMessage, text: string): void {
+  msg.pending = false;
+  msg.content = text;
+  msg.error = true;
 }
 
 function svgIcon(paths: Array<{ tag: "path" | "line"; attrs: Record<string, string> }>): SVGSVGElement {
@@ -377,6 +465,7 @@ function createPanel(config: WidgetConfig): PanelRefs {
 function renderMessage(msg: ChatMessage): HTMLDivElement {
   const wrap = document.createElement("div");
   wrap.className = `mrag-msg mrag-msg-${msg.role}`;
+  if (msg.error) wrap.classList.add("mrag-msg-error");
   if (msg.pending && !msg.content) {
     const t = document.createElement("div");
     t.className = "mrag-typing";
@@ -388,6 +477,16 @@ function renderMessage(msg: ChatMessage): HTMLDivElement {
   const body = document.createElement("div");
   body.textContent = msg.content;
   wrap.appendChild(body);
+
+  if (msg.error) {
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "mrag-retry";
+    retry.textContent = "Retry";
+    retry.setAttribute("data-mrag-retry", "");
+    retry.setAttribute("aria-label", "Retry the last message");
+    wrap.appendChild(retry);
+  }
 
   if (msg.role === "assistant" && msg.sources && msg.sources.length > 0) {
     wrap.appendChild(renderSources(msg.sources));

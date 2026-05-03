@@ -145,6 +145,31 @@ export function buildStyles(vars: StyleVars): string {
   font-size: 12px;
   font-style: italic;
 }
+.mrag-msg-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+.mrag-retry {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  background: #fff;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+.mrag-retry:hover { background: #fef2f2; }
+.mrag-retry:focus-visible {
+  outline: 2px solid #991b1b;
+  outline-offset: 2px;
+}
 
 .mrag-typing {
   display: inline-flex;
@@ -168,6 +193,7 @@ export function buildStyles(vars: StyleVars): string {
 @media (prefers-reduced-motion: reduce) {
   .mrag-launcher { transition: none; }
   .mrag-typing span { animation: none; opacity: 0.7; }
+  .mrag-retry { transition: none; }
 }
 
 .mrag-sources {

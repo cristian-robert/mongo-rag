@@ -26,6 +26,8 @@ export interface ChatMessage {
   content: string;
   sources?: ChatSource[];
   pending?: boolean;
+  /** Set when the bubble represents a terminal failure — drives retry UI. */
+  error?: boolean;
 }
 
 export interface SSEEvent {
