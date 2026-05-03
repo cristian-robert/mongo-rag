@@ -2,16 +2,10 @@ import { describe, expect, it } from "vitest";
 import { applyEvent, buildChatBody } from "../src/widget.js";
 import type { ChatMessage, SSEEvent, WidgetConfig } from "../src/types.js";
 
+import { baseWidgetConfig } from "./fixtures.js";
+
 function baseConfig(): WidgetConfig {
-  return {
-    apiKey: "mrag_test",
-    apiUrl: "https://api.example.test",
-    primaryColor: "#0f172a",
-    botName: "Assistant",
-    welcomeMessage: "Hi",
-    position: "bottom-right",
-    showBranding: true,
-  };
+  return baseWidgetConfig();
 }
 
 function makeMsg(): ChatMessage {

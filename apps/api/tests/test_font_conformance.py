@@ -30,9 +30,13 @@ _DECL_PATTERN = re.compile(
     re.MULTILINE,
 )
 
-# Top-level keys are at depth 1 of the WIDGET_FONTS object literal — quoted
-# or unquoted ident, followed by `:`.
-_KEY_PATTERN = re.compile(r'^\s*["\']?([a-z][a-z0-9_-]*)["\']?\s*:', re.MULTILINE)
+# Top-level keys are written as `  KEY: {` (object literal value). The inner
+# fields of each entry (label/stack/google/role) are followed by string or
+# null literals, never `{`, so a `KEY:\s*{` match cannot collide with them.
+_KEY_PATTERN = re.compile(
+    r'^[ \t]+["\']?([a-z][a-z0-9_-]*)["\']?\s*:\s*\{',
+    re.MULTILINE,
+)
 
 
 def _extract_widget_fonts_keys(source: str) -> set[str]:
@@ -57,30 +61,7 @@ def _extract_widget_fonts_keys(source: str) -> set[str]:
         raise AssertionError("Unbalanced braces in WIDGET_FONTS literal")
 
     body = source[start + 1 : end]
-    # Filter to keys at the top level of `body` only — child object braces
-    # would otherwise pollute. Track depth inside `body`.
-    keys: set[str] = set()
-    depth = 0
-    line_start = 0
-    for i, ch in enumerate(body):
-        if ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-        elif ch == "\n":
-            if depth == 0:
-                line = body[line_start:i]
-                m = _KEY_PATTERN.match(line)
-                if m:
-                    keys.add(m.group(1))
-            line_start = i + 1
-    # Tail line (no trailing newline).
-    if depth == 0:
-        line = body[line_start:]
-        m = _KEY_PATTERN.match(line)
-        if m:
-            keys.add(m.group(1))
-    return keys
+    return set(_KEY_PATTERN.findall(body))
 
 
 @pytest.mark.unit

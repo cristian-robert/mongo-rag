@@ -9,15 +9,50 @@
  *   - apiKey must be present and start with "mrag_"
  *   - apiUrl must be http(s); defaults to https://api.mongorag.com
  *   - position is whitelisted to prevent CSS injection
- *   - primaryColor is whitelisted to a safe regex (#hex or rgb(a))
+ *   - primaryColor is whitelisted to a safe regex (#hex, optional alpha, or rgb(a))
+ *   - all theme tokens have safe defaults; unknown values fall back silently
+ *
+ * Most cosmetic theme tokens are sourced server-side (PublicBotConfig fetched
+ * by publicBot.ts). The data-* surface is intentionally minimal — embedders
+ * should use the dashboard rather than data attributes for branding.
  */
 
-import type { Position, WidgetConfig } from "./types.js";
+import { WIDGET_FONT_KEYS, type WidgetFontKey } from "./fonts.js";
+import type {
+  ColorMode,
+  DensityToken,
+  LauncherIcon,
+  LauncherShape,
+  Position,
+  RadiusToken,
+  SizeToken,
+  WidgetConfig,
+} from "./types.js";
 
 const DEFAULT_API_URL = "https://api.mongorag.com";
 const DEFAULT_PRIMARY_COLOR = "#0f172a";
-const SAFE_COLOR = /^(#[0-9a-fA-F]{3,8}|rgb\([\d,\s]+\)|rgba\([\d,.\s]+\))$/;
+const SAFE_COLOR = /^(#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?|rgb\([\d,\s]+\)|rgba\([\d,.\s]+\))$/;
 const ALLOWED_POSITIONS: ReadonlySet<Position> = new Set(["bottom-right", "bottom-left"]);
+const ALLOWED_COLOR_MODES: ReadonlySet<ColorMode> = new Set(["light", "dark", "auto"]);
+const ALLOWED_RADII: ReadonlySet<RadiusToken> = new Set(["none", "sm", "md", "lg", "full"]);
+const ALLOWED_DENSITIES: ReadonlySet<DensityToken> = new Set([
+  "compact",
+  "comfortable",
+  "spacious",
+]);
+const ALLOWED_SIZES: ReadonlySet<SizeToken> = new Set(["sm", "md", "lg"]);
+const ALLOWED_LAUNCHER_SHAPES: ReadonlySet<LauncherShape> = new Set([
+  "circle",
+  "rounded-square",
+  "pill",
+]);
+const ALLOWED_LAUNCHER_ICONS: ReadonlySet<LauncherIcon> = new Set([
+  "chat",
+  "sparkle",
+  "book",
+  "question",
+  "custom",
+]);
 // Strip C0 controls (0x00-0x1F) and DEL (0x7F).
 const CONTROL_CHARS = /[\x00-\x1F\x7F]/g;
 
@@ -81,9 +116,74 @@ export function safeColor(input: string | undefined, fallback: string): string {
   return input;
 }
 
-export function safePosition(input: string | undefined, fallback: Position = "bottom-right"): Position {
+export function safeOptionalColor(input: string | null | undefined): string | null {
+  if (!input) return null;
+  if (!SAFE_COLOR.test(input)) return null;
+  return input;
+}
+
+export function safePosition(
+  input: string | undefined,
+  fallback: Position = "bottom-right",
+): Position {
   if (input && ALLOWED_POSITIONS.has(input as Position)) {
     return input as Position;
+  }
+  return fallback;
+}
+
+export function safeColorMode(input: string | undefined, fallback: ColorMode = "light"): ColorMode {
+  if (input && ALLOWED_COLOR_MODES.has(input as ColorMode)) return input as ColorMode;
+  return fallback;
+}
+
+export function safeFont(input: string | undefined, fallback: WidgetFontKey = "system"): WidgetFontKey {
+  if (input && (WIDGET_FONT_KEYS as readonly string[]).includes(input)) {
+    return input as WidgetFontKey;
+  }
+  return fallback;
+}
+
+export function safeOptionalFont(input: string | null | undefined): WidgetFontKey | null {
+  if (!input) return null;
+  if (!(WIDGET_FONT_KEYS as readonly string[]).includes(input)) return null;
+  return input as WidgetFontKey;
+}
+
+export function safeRadius(input: string | undefined, fallback: RadiusToken = "md"): RadiusToken {
+  if (input && ALLOWED_RADII.has(input as RadiusToken)) return input as RadiusToken;
+  return fallback;
+}
+
+export function safeDensity(
+  input: string | undefined,
+  fallback: DensityToken = "comfortable",
+): DensityToken {
+  if (input && ALLOWED_DENSITIES.has(input as DensityToken)) return input as DensityToken;
+  return fallback;
+}
+
+export function safeSize(input: string | undefined, fallback: SizeToken = "md"): SizeToken {
+  if (input && ALLOWED_SIZES.has(input as SizeToken)) return input as SizeToken;
+  return fallback;
+}
+
+export function safeLauncherShape(
+  input: string | undefined,
+  fallback: LauncherShape = "circle",
+): LauncherShape {
+  if (input && ALLOWED_LAUNCHER_SHAPES.has(input as LauncherShape)) {
+    return input as LauncherShape;
+  }
+  return fallback;
+}
+
+export function safeLauncherIcon(
+  input: string | undefined,
+  fallback: LauncherIcon = "chat",
+): LauncherIcon {
+  if (input && ALLOWED_LAUNCHER_ICONS.has(input as LauncherIcon)) {
+    return input as LauncherIcon;
   }
   return fallback;
 }
@@ -91,6 +191,25 @@ export function safePosition(input: string | undefined, fallback: Position = "bo
 export function safeText(input: string | undefined, fallback: string, max = 200): string {
   if (!input) return fallback;
   return input.replace(CONTROL_CHARS, "").slice(0, max) || fallback;
+}
+
+export function safeOptionalText(input: string | null | undefined, max = 80): string | null {
+  if (!input) return null;
+  const cleaned = input.replace(CONTROL_CHARS, "").slice(0, max).trim();
+  return cleaned || null;
+}
+
+export function safeOptionalHttpsUrl(input: string | null | undefined): string | null {
+  if (!input) return null;
+  const trimmed = input.trim();
+  if (trimmed.length === 0 || trimmed.length > 500) return null;
+  if (!trimmed.startsWith("https://")) return null;
+  try {
+    const u = new URL(trimmed);
+    return u.protocol === "https:" ? trimmed : null;
+  } catch {
+    return null;
+  }
 }
 
 function safeBool(input: boolean | string | undefined, fallback: boolean): boolean {
@@ -116,15 +235,38 @@ export function buildConfig(raw: RawConfigInput): WidgetConfig {
   const result: WidgetConfig = {
     apiKey,
     apiUrl,
-    primaryColor: safeColor(raw.primaryColor?.trim(), DEFAULT_PRIMARY_COLOR),
     botName: safeText(raw.botName?.trim(), "Assistant", 60),
     welcomeMessage: safeText(
       raw.welcomeMessage?.trim(),
       "Hi! Ask me anything about this site.",
       400,
     ),
-    position: safePosition(raw.position?.trim()),
     showBranding: safeBool(raw.showBranding, true),
+
+    // Cosmetic — start at safe defaults; mergePublicConfig fills from server.
+    primaryColor: safeColor(raw.primaryColor?.trim(), DEFAULT_PRIMARY_COLOR),
+    position: safePosition(raw.position?.trim()),
+    avatarUrl: null,
+    colorMode: "light",
+    background: null,
+    surface: null,
+    foreground: null,
+    muted: null,
+    border: null,
+    primaryForeground: null,
+    darkOverrides: null,
+    fontFamily: "system",
+    displayFont: null,
+    baseFontSize: "md",
+    radius: "md",
+    density: "comfortable",
+    launcherShape: "circle",
+    launcherSize: "md",
+    panelSize: "md",
+    launcherIcon: "chat",
+    launcherIconUrl: null,
+    showAvatarInMessages: true,
+    brandingText: null,
   };
   const botId = raw.botId?.trim();
   if (botId) result.botId = botId;

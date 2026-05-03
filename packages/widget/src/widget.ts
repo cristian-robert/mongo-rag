@@ -11,7 +11,9 @@
  */
 
 import { startChatStream, type ChatRequestBody } from "./api.js";
+import { googleFontsUrl, isReducedData } from "./fonts.js";
 import { buildStyles } from "./styles.js";
+import { buildThemeTokens } from "./themeTokens.js";
 import {
   fetchPublicBotConfig as defaultFetchPublic,
   mergePublicConfig,
@@ -19,7 +21,13 @@ import {
 } from "./publicBot.js";
 import { RevealScheduler } from "./revealScheduler.js";
 import type { RawConfigInput } from "./config.js";
-import type { ChatMessage, ChatSource, SSEEvent, WidgetConfig } from "./types.js";
+import type {
+  ChatMessage,
+  ChatSource,
+  LauncherIcon,
+  SSEEvent,
+  WidgetConfig,
+} from "./types.js";
 
 const STORAGE_KEY_PREFIX = "mongorag.conversation_id:";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -78,8 +86,47 @@ export function mountWidget(config: WidgetConfig, options: MountOptions = {}): W
 
   const root = host.attachShadow({ mode: "closed" });
 
+  // Container element inside the shadow root that carries the color-mode
+  // class so :host(.mrag-mode-dark) / :host(.mrag-mode-auto) selectors
+  // resolve. The shadow root itself can't carry classes, so we use a
+  // wrapping div and configure styles to apply via descendant selectors
+  // OR put the class on the host element. We put it on the host —
+  // :host(.x) is the documented way to select the host when it has a
+  // class — host attribute mutations re-run the cascade.
+  function applyColorModeClass(mode: WidgetConfig["colorMode"]): void {
+    host.classList.remove("mrag-mode-light", "mrag-mode-dark", "mrag-mode-auto");
+    host.classList.add(`mrag-mode-${mode}`);
+  }
+  applyColorModeClass(liveConfig.colorMode);
+
+  // Font lazy-load: inject one <link rel="stylesheet"> for any non-system
+  // fonts the customer picked. prefers-reduced-data skips the load.
+  const fontLink = document.createElement("link");
+  fontLink.rel = "stylesheet";
+  function applyFontLink(c: WidgetConfig): void {
+    if (isReducedData()) {
+      if (fontLink.parentNode) fontLink.parentNode.removeChild(fontLink);
+      return;
+    }
+    const keys = c.displayFont ? [c.fontFamily, c.displayFont] : [c.fontFamily];
+    const url = googleFontsUrl(keys);
+    if (!url) {
+      if (fontLink.parentNode) fontLink.parentNode.removeChild(fontLink);
+      return;
+    }
+    if (fontLink.href !== url) fontLink.href = url;
+    if (!fontLink.parentNode) root.appendChild(fontLink);
+  }
+  applyFontLink(liveConfig);
+
   const style = document.createElement("style");
-  style.textContent = buildStyles({ primaryColor: liveConfig.primaryColor });
+  function rebuildStyles(c: WidgetConfig): void {
+    style.textContent = buildStyles({
+      tokens: buildThemeTokens(c),
+      darkOverrides: c.darkOverrides ?? null,
+    });
+  }
+  rebuildStyles(liveConfig);
   root.appendChild(style);
 
   const launcher = createLauncher(liveConfig);
@@ -128,7 +175,7 @@ export function mountWidget(config: WidgetConfig, options: MountOptions = {}): W
   function renderMessages(): void {
     panel.messages.textContent = "";
     for (const msg of state.messages) {
-      panel.messages.appendChild(renderMessage(msg));
+      panel.messages.appendChild(renderMessage(msg, liveConfig));
     }
     panel.messages.scrollTop = panel.messages.scrollHeight;
   }
@@ -138,28 +185,38 @@ export function mountWidget(config: WidgetConfig, options: MountOptions = {}): W
    * relabel launcher + panel, swap position class, and refresh any
    * not-yet-shown welcome message. Existing user/assistant turns are
    * preserved so re-skinning never destroys conversation state.
+   *
+   * With the expanded theme surface, virtually any field change can
+   * affect rendering — we always rebuild styles, font link, and the
+   * launcher. Cheap operations; happens at most once per config update.
    */
   function applyConfigUpdate(next: WidgetConfig): void {
     const prev = liveConfig;
     liveConfig = next;
 
-    if (prev.primaryColor !== next.primaryColor) {
-      style.textContent = buildStyles({ primaryColor: next.primaryColor });
-    }
+    rebuildStyles(next);
+    applyColorModeClass(next.colorMode);
+    applyFontLink(next);
 
     if (prev.botName !== next.botName) {
-      launcher.setAttribute("aria-label", `Open chat with ${next.botName}`);
       panel.title.textContent = next.botName;
       panel.element.setAttribute("aria-label", `${next.botName} chat`);
     }
 
+    // Launcher icon / shape / size / position can all change; the
+    // simplest correct path is to rebuild the launcher's children.
+    relauncher(launcher, next);
+
     if (prev.position !== next.position) {
       const oldClass = `mrag-pos-${prev.position === "bottom-left" ? "left" : "right"}`;
       const newClass = `mrag-pos-${next.position === "bottom-left" ? "left" : "right"}`;
-      launcher.classList.remove(oldClass);
-      launcher.classList.add(newClass);
       panel.element.classList.remove(oldClass);
       panel.element.classList.add(newClass);
+    }
+
+    // Branding footer text update.
+    if (panel.brandingLink) {
+      panel.brandingLink.textContent = next.brandingText ?? "Powered by MongoRAG";
     }
 
     // If only the seeded welcome message is in the log, refresh it too.
@@ -170,6 +227,9 @@ export function mountWidget(config: WidgetConfig, options: MountOptions = {}): W
       state.messages[0]?.content === prev.welcomeMessage
     ) {
       state.messages[0].content = next.welcomeMessage;
+      renderMessages();
+    } else {
+      // Avatar in existing messages may need re-rendering.
       renderMessages();
     }
 
@@ -357,7 +417,9 @@ function applyError(msg: ChatMessage, text: string): void {
   msg.error = true;
 }
 
-function svgIcon(paths: Array<{ tag: "path" | "line"; attrs: Record<string, string> }>): SVGSVGElement {
+function svgIcon(
+  paths: Array<{ tag: "path" | "line" | "circle"; attrs: Record<string, string> }>,
+): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("viewBox", "0 0 24 24");
   svg.setAttribute("fill", "none");
@@ -374,19 +436,68 @@ function svgIcon(paths: Array<{ tag: "path" | "line"; attrs: Record<string, stri
   return svg;
 }
 
+const ICON_GLYPHS: Record<Exclude<LauncherIcon, "custom">, () => SVGSVGElement> = {
+  chat: () =>
+    svgIcon([
+      {
+        tag: "path",
+        attrs: { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" },
+      },
+    ]),
+  sparkle: () =>
+    svgIcon([
+      { tag: "path", attrs: { d: "M12 3v18" } },
+      { tag: "path", attrs: { d: "M3 12h18" } },
+      { tag: "path", attrs: { d: "M5.6 5.6l12.8 12.8" } },
+      { tag: "path", attrs: { d: "M18.4 5.6L5.6 18.4" } },
+    ]),
+  book: () =>
+    svgIcon([
+      { tag: "path", attrs: { d: "M4 4h12a4 4 0 0 1 4 4v12H8a4 4 0 0 1-4-4V4z" } },
+      { tag: "path", attrs: { d: "M4 16a4 4 0 0 1 4-4h12" } },
+    ]),
+  question: () =>
+    svgIcon([
+      { tag: "circle", attrs: { cx: "12", cy: "12", r: "10" } },
+      { tag: "path", attrs: { d: "M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 4" } },
+      { tag: "line", attrs: { x1: "12", y1: "17", x2: "12", y2: "17.01" } },
+    ]),
+};
+
+function buildLauncherIcon(config: WidgetConfig): Node {
+  if (config.launcherIcon === "custom" && config.launcherIconUrl) {
+    const img = document.createElement("img");
+    img.src = config.launcherIconUrl;
+    img.alt = "";
+    img.setAttribute("aria-hidden", "true");
+    img.loading = "lazy";
+    img.onerror = () => {
+      // Replace failed img with the default chat glyph in-place.
+      const parent = img.parentNode;
+      if (parent) parent.replaceChild(ICON_GLYPHS.chat(), img);
+    };
+    return img;
+  }
+  const key = config.launcherIcon === "custom" ? "chat" : config.launcherIcon;
+  return ICON_GLYPHS[key]();
+}
+
 function createLauncher(config: WidgetConfig): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.type = "button";
+  relauncher(btn, config);
+  return btn;
+}
+
+/** (Re)build the launcher's class list, aria attributes, and icon child. */
+function relauncher(btn: HTMLButtonElement, config: WidgetConfig): void {
   btn.className = `mrag-launcher mrag-pos-${config.position === "bottom-left" ? "left" : "right"}`;
   btn.setAttribute("aria-label", `Open chat with ${config.botName}`);
   btn.setAttribute("aria-haspopup", "dialog");
-  btn.setAttribute("aria-expanded", "false");
-  btn.appendChild(
-    svgIcon([
-      { tag: "path", attrs: { d: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" } },
-    ]),
-  );
-  return btn;
+  btn.setAttribute("aria-expanded", btn.getAttribute("aria-expanded") ?? "false");
+  // Replace child contents with the (possibly updated) icon.
+  while (btn.firstChild) btn.removeChild(btn.firstChild);
+  btn.appendChild(buildLauncherIcon(config));
 }
 
 interface PanelRefs {
@@ -397,6 +508,8 @@ interface PanelRefs {
   input: HTMLTextAreaElement;
   send: HTMLButtonElement;
   close: HTMLButtonElement;
+  /** Optional anchor inside the branding footer; null when showBranding=false. */
+  brandingLink: HTMLAnchorElement | null;
 }
 
 function createPanel(config: WidgetConfig): PanelRefs {
@@ -447,51 +560,100 @@ function createPanel(config: WidgetConfig): PanelRefs {
   form.append(input, send);
   el.append(header, messages, form);
 
+  let brandingLink: HTMLAnchorElement | null = null;
   if (config.showBranding) {
     const footer = document.createElement("div");
     footer.className = "mrag-footer";
-    const link = document.createElement("a");
-    link.href = "https://mongorag.com";
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = "Powered by MongoRAG";
-    footer.appendChild(link);
+    brandingLink = document.createElement("a");
+    brandingLink.href = "https://mongorag.com";
+    brandingLink.target = "_blank";
+    brandingLink.rel = "noopener noreferrer";
+    brandingLink.textContent = config.brandingText ?? "Powered by MongoRAG";
+    footer.appendChild(brandingLink);
     el.appendChild(footer);
   }
 
-  return { element: el, title, messages, form, input, send, close };
+  return { element: el, title, messages, form, input, send, close, brandingLink };
 }
 
-function renderMessage(msg: ChatMessage): HTMLDivElement {
-  const wrap = document.createElement("div");
-  wrap.className = `mrag-msg mrag-msg-${msg.role}`;
-  if (msg.error) wrap.classList.add("mrag-msg-error");
+function renderMessage(msg: ChatMessage, config?: WidgetConfig): HTMLElement {
+  const bubble = document.createElement("div");
+  bubble.className = `mrag-msg mrag-msg-${msg.role}`;
+  if (msg.error) bubble.classList.add("mrag-msg-error");
+
   if (msg.pending && !msg.content) {
     const t = document.createElement("div");
     t.className = "mrag-typing";
     t.setAttribute("aria-label", "Assistant is typing");
     for (let i = 0; i < 3; i++) t.appendChild(document.createElement("span"));
-    wrap.appendChild(t);
-    return wrap;
-  }
-  const body = document.createElement("div");
-  body.textContent = msg.content;
-  wrap.appendChild(body);
+    bubble.appendChild(t);
+  } else {
+    const body = document.createElement("div");
+    body.textContent = msg.content;
+    bubble.appendChild(body);
 
-  if (msg.error) {
-    const retry = document.createElement("button");
-    retry.type = "button";
-    retry.className = "mrag-retry";
-    retry.textContent = "Retry";
-    retry.setAttribute("data-mrag-retry", "");
-    retry.setAttribute("aria-label", "Retry the last message");
-    wrap.appendChild(retry);
+    if (msg.error) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "mrag-retry";
+      retry.textContent = "Retry";
+      retry.setAttribute("data-mrag-retry", "");
+      retry.setAttribute("aria-label", "Retry the last message");
+      bubble.appendChild(retry);
+    }
+
+    if (msg.role === "assistant" && msg.sources && msg.sources.length > 0) {
+      bubble.appendChild(renderSources(msg.sources));
+    }
   }
 
-  if (msg.role === "assistant" && msg.sources && msg.sources.length > 0) {
-    wrap.appendChild(renderSources(msg.sources));
+  // When the bot has an avatar configured and the assistant is talking,
+  // wrap the bubble in a row that puts a 24x24 avatar circle next to
+  // the bubble. User messages don't get an avatar (it's their own
+  // page; we don't know their face).
+  if (
+    msg.role === "assistant" &&
+    config?.showAvatarInMessages &&
+    !msg.error
+  ) {
+    const row = document.createElement("div");
+    row.className = "mrag-msg-row";
+    const avatar = renderAvatar(config);
+    row.append(avatar, bubble);
+    return row;
+  }
+
+  return bubble;
+}
+
+function renderAvatar(config: WidgetConfig): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "mrag-avatar";
+  if (config.avatarUrl) {
+    const img = document.createElement("img");
+    img.src = config.avatarUrl;
+    img.alt = "";
+    img.loading = "lazy";
+    img.setAttribute("aria-hidden", "true");
+    img.onerror = () => {
+      // Fall back to initial.
+      const parent = img.parentNode;
+      if (parent) {
+        parent.removeChild(img);
+        parent.appendChild(initialChar(config.botName));
+      }
+    };
+    wrap.appendChild(img);
+  } else {
+    wrap.appendChild(initialChar(config.botName));
   }
   return wrap;
+}
+
+function initialChar(name: string): Text {
+  const trimmed = (name ?? "").trim();
+  const initial = trimmed.length > 0 ? trimmed[0]!.toUpperCase() : "?";
+  return document.createTextNode(initial);
 }
 
 function renderSources(sources: ChatSource[]): HTMLDetailsElement {
