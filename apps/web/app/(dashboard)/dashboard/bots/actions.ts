@@ -41,16 +41,11 @@ export async function createBotAction(input: unknown): Promise<CreateBotResult> 
     // Strip empty description so the API treats it as null.
     const payload = { ...parsed.data };
     if (payload.description === "") delete payload.description;
-    if (payload.widget_config.avatar_url === "")
-      payload.widget_config.avatar_url = undefined;
 
     const bot = await createBotRequest({
       ...payload,
       description: payload.description,
-      widget_config: {
-        ...payload.widget_config,
-        avatar_url: payload.widget_config.avatar_url ?? null,
-      },
+      widget_config: payload.widget_config,
     });
     revalidatePath(BOTS_PATH);
     return { ok: true, bot };
@@ -79,20 +74,9 @@ export async function updateBotAction(
   try {
     const payload = { ...parsed.data };
     if (payload.description === "") payload.description = undefined;
-    if (
-      payload.widget_config &&
-      payload.widget_config.avatar_url === ""
-    ) {
-      payload.widget_config.avatar_url = undefined;
-    }
     const bot = await updateBotRequest(id, {
       ...payload,
-      widget_config: payload.widget_config
-        ? {
-            ...payload.widget_config,
-            avatar_url: payload.widget_config.avatar_url ?? null,
-          }
-        : undefined,
+      widget_config: payload.widget_config,
     });
     revalidatePath(BOTS_PATH);
     revalidatePath(botPath(id));

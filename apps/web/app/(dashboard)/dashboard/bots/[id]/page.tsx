@@ -33,7 +33,7 @@ export default async function EditBotPage({ params }: Props) {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-10">
+    <div className="mx-auto w-full max-w-6xl space-y-8 px-6 py-10">
       <header className="space-y-2">
         <Link
           href="/dashboard/bots"
