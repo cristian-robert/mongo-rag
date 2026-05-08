@@ -64,7 +64,6 @@ export function PreviewPane({ botId, draft }: PreviewPaneProps) {
           ref={frameRef}
           title="Widget preview"
           className="h-[640px] w-full bg-background"
-          sandbox="allow-scripts allow-same-origin"
         />
       </div>
       <p className="text-xs text-muted-foreground">
