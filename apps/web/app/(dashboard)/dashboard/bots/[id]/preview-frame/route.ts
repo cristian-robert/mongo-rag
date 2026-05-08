@@ -116,9 +116,16 @@ interface RenderArgs {
 function renderHtml({ apiUrl, bot }: RenderArgs) {
   // The widget bundle reads data-preview-tokens as JSON, calls
   // configFromPublicOnly under the hood, and skips the public fetch.
+  // The token rides in a single-quoted HTML attribute, so apostrophes
+  // in user-controlled fields (welcome_message, branding_text, name)
+  // would terminate the attribute early and make the widget bundle's
+  // JSON.parse throw — the launcher then never mounts and no settings
+  // changes propagate. Escape `'`, `<`, and `--` to keep the attribute
+  // and any nested </script> sequences safe.
   const tokensJson = JSON.stringify(bot)
     .replace(/</g, "\\u003c")
-    .replace(/--/g, "-\\u002d");
+    .replace(/--/g, "-\\u002d")
+    .replace(/'/g, "\\u0027");
 
   return `<!DOCTYPE html>
 <html lang="en">

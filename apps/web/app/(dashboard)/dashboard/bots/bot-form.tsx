@@ -183,11 +183,26 @@ export function BotForm({ mode, bot }: Props) {
     control: form.control,
     name: "widget_config",
   });
-  const watched = useWatch({ control: form.control });
+  const nameWatch = useWatch({ control: form.control, name: "name" });
+  const welcomeWatch = useWatch({ control: form.control, name: "welcome_message" });
+  const toneWatch = useWatch({ control: form.control, name: "tone" });
 
   // Single-step undo for preset application.
   const previousWidget = useRef<CreateBotFormData["widget_config"] | null>(null);
   const [canUndoPreset, setCanUndoPreset] = useState(false);
+
+  function writeWidgetConfig(next: CreateBotFormData["widget_config"]) {
+    // Set each field individually so every Controller subscribed to its
+    // specific name re-renders. setValue on the parent path doesn't
+    // reliably fan out to nested Controller subscriptions in RHF v7
+    // when child fields aren't all registered via `register()`.
+    (Object.keys(next) as Array<keyof CreateBotFormData["widget_config"]>).forEach((key) => {
+      form.setValue(`widget_config.${key}` as const, next[key], {
+        shouldDirty: true,
+        shouldTouch: true,
+      });
+    });
+  }
 
   function applyPreset(preset: ThemePreset) {
     previousWidget.current = form.getValues("widget_config");
@@ -195,16 +210,13 @@ export function BotForm({ mode, bot }: Props) {
       ...form.getValues("widget_config"),
       ...preset.apply,
     } as CreateBotFormData["widget_config"];
-    form.setValue("widget_config", merged, { shouldDirty: true, shouldTouch: true });
+    writeWidgetConfig(merged);
     setCanUndoPreset(true);
   }
 
   function undoPreset() {
     if (!previousWidget.current) return;
-    form.setValue("widget_config", previousWidget.current, {
-      shouldDirty: true,
-      shouldTouch: true,
-    });
+    writeWidgetConfig(previousWidget.current);
     previousWidget.current = null;
     setCanUndoPreset(false);
   }
@@ -236,7 +248,7 @@ export function BotForm({ mode, bot }: Props) {
     display_font: widgetWatch?.display_font ?? null,
     radius: widgetWatch?.radius,
     launcher_icon: widgetWatch?.launcher_icon,
-    tone: watched.tone,
+    tone: toneWatch,
     branding_text: widgetWatch?.branding_text ?? null,
   };
 
@@ -818,10 +830,10 @@ export function BotForm({ mode, bot }: Props) {
         <PreviewPane
           botId={previewBotId}
           draft={{
-            name: watched.name ?? "Assistant",
-            welcome_message: watched.welcome_message ?? "",
+            name: nameWatch ?? "Assistant",
+            welcome_message: welcomeWatch ?? "",
             widget_config:
-              (watched.widget_config as CreateBotFormData["widget_config"]) ??
+              (widgetWatch as CreateBotFormData["widget_config"]) ??
               defaultBotFormValues.widget_config,
           }}
         />
