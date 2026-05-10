@@ -90,7 +90,14 @@ function decodeBase64UrlJson(input: string): unknown {
   // Restore base64 padding + standard alphabet.
   const standard = input.replace(/-/g, "+").replace(/_/g, "/");
   const pad = standard.length % 4 === 0 ? "" : "=".repeat(4 - (standard.length % 4));
-  const decoded = atob(standard + pad);
+  // The encoder (preview-pane.tsx) uses
+  //   btoa(unescape(encodeURIComponent(json)))
+  // which packs UTF-8 bytes into a binary string. Decoding with plain
+  // `atob` here would strip the multi-byte sequences and break for any
+  // bot name / welcome message containing emoji or accented chars.
+  // Buffer reads the bytes correctly and TextDecoder reassembles UTF-8.
+  const bytes = Buffer.from(standard + pad, "base64");
+  const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
   return JSON.parse(decoded);
 }
 
@@ -116,13 +123,18 @@ interface RenderArgs {
 function renderHtml({ apiUrl, bot }: RenderArgs) {
   // The widget bundle reads data-preview-tokens as JSON, calls
   // configFromPublicOnly under the hood, and skips the public fetch.
-  // The token rides in a single-quoted HTML attribute, so apostrophes
-  // in user-controlled fields (welcome_message, branding_text, name)
-  // would terminate the attribute early and make the widget bundle's
-  // JSON.parse throw — the launcher then never mounts and no settings
-  // changes propagate. Escape `'`, `<`, and `--` to keep the attribute
-  // and any nested </script> sequences safe.
+  // The token rides in a single-quoted HTML attribute, so any char that
+  // is either parsed by HTML attribute decoding or terminates the
+  // attribute will corrupt the JSON the widget tries to parse. Escape:
+  //   `&`  — HTML entity-decoded; user text like `&quot;` would otherwise
+  //          turn into a literal `"` and unbalance the JSON.
+  //   `'`  — closes the single-quoted attribute (the apostrophe in
+  //          `"Hi! I'm <Bot>!"` was the original boot-blocker).
+  //   `<`  — defends against `</script>` injection if the JSON is ever
+  //          embedded in a script body.
+  //   `--` — defends against accidental `<!-- -->` comment edges.
   const tokensJson = JSON.stringify(bot)
+    .replace(/&/g, "\\u0026")
     .replace(/</g, "\\u003c")
     .replace(/--/g, "-\\u002d")
     .replace(/'/g, "\\u0027");
