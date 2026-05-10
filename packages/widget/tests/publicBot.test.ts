@@ -3,17 +3,10 @@ import { fetchPublicBotConfig, mergePublicConfig } from "../src/publicBot.js";
 import type { RawConfigInput } from "../src/config.js";
 import type { WidgetConfig } from "../src/types.js";
 import type { PublicBotConfig } from "../src/publicBot.js";
+import { baseWidgetConfig } from "./fixtures.js";
 
 function baseConfig(): WidgetConfig {
-  return {
-    apiKey: "mrag_test",
-    apiUrl: "https://api.example.test",
-    primaryColor: "#0f172a",
-    botName: "Assistant",
-    welcomeMessage: "Hi!",
-    position: "bottom-right",
-    showBranding: true,
-  };
+  return baseWidgetConfig({ welcomeMessage: "Hi!" });
 }
 
 function publicPayload(overrides: Partial<PublicBotConfig> = {}): PublicBotConfig {

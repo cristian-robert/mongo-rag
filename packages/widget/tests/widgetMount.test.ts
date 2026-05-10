@@ -11,18 +11,15 @@ import { mountWidget } from "../src/widget.js";
 import type { WidgetConfig } from "../src/types.js";
 import type { RawConfigInput } from "../src/config.js";
 import type { PublicBotConfig } from "../src/publicBot.js";
+import { baseWidgetConfig } from "./fixtures.js";
 
 function makeConfig(overrides: Partial<WidgetConfig> = {}): WidgetConfig {
-  return {
-    apiKey: "mrag_test",
-    apiUrl: "https://api.example.test",
-    primaryColor: "#0f172a",
+  return baseWidgetConfig({
     botName: "Initial",
     welcomeMessage: "Initial welcome",
-    position: "bottom-right",
     showBranding: false,
     ...overrides,
-  };
+  });
 }
 
 function publicResponse(overrides: Partial<PublicBotConfig> = {}): PublicBotConfig {

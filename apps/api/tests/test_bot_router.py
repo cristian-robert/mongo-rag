@@ -287,6 +287,10 @@ def test_public_bot_response_has_strict_allowlist(bot_client):
     or new field added without the right Pydantic gate), the response
     must still serialize to exactly the documented public surface. Any
     new key added to PublicBotResponse must update this test deliberately.
+
+    The widget_config surface is intentionally cosmetic-only — every field
+    listed here is safe to expose to anonymous callers. system_prompt,
+    document_filter, tenant_id, etc. must NEVER appear here.
     """
     bot_id = str(ObjectId())
     with patch("src.routers.bots.BotService") as mock_cls:
@@ -327,9 +331,36 @@ def test_public_bot_response_has_strict_allowlist(bot_client):
         "welcome_message",
         "widget_config",
     }
-    # widget_config also has its own strict shape.
+    # Pinned widget_config surface — the cosmetic theme tokens. Adding a new
+    # field to WidgetConfig REQUIRES updating this set deliberately so we
+    # consciously check that the field is safe to expose anonymously.
     assert set(data["widget_config"].keys()) == {
+        # Existing
         "primary_color",
         "position",
         "avatar_url",
+        # Color tokens (#87)
+        "color_mode",
+        "background",
+        "surface",
+        "foreground",
+        "muted",
+        "border",
+        "primary_foreground",
+        "dark_overrides",
+        # Typography (#87)
+        "font_family",
+        "display_font",
+        "base_font_size",
+        # Shape & density (#87)
+        "radius",
+        "density",
+        "launcher_shape",
+        "launcher_size",
+        "panel_size",
+        # Branding & icons (#87)
+        "launcher_icon",
+        "launcher_icon_url",
+        "show_avatar_in_messages",
+        "branding_text",
     }

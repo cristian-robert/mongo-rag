@@ -56,7 +56,14 @@ function generateNonce(): string {
  * the `x-nonce` request header so Next.js auto-applies it to every
  * `<script>` and `<link rel="preload" as="script">` it emits.
  */
-function buildCsp(nonce: string): string {
+// Routes that may be embedded in a same-origin iframe (e.g. the bot preview
+// pane on the bot edit page). Default for everything else stays strict
+// `frame-ancestors 'none'` — a clickjacking-resistant baseline.
+function allowsSelfFraming(pathname: string): boolean {
+  return /^\/dashboard\/bots\/[^/]+\/preview-frame\/?$/.test(pathname);
+}
+
+function buildCsp(nonce: string, pathname: string): string {
   const scriptSrc = isProd
     ? [`'nonce-${nonce}'`, "'strict-dynamic'", "https:"]
     : [
@@ -71,7 +78,7 @@ function buildCsp(nonce: string): string {
     "default-src": ["'self'"],
     "base-uri": ["'self'"],
     "form-action": ["'self'", "https://checkout.stripe.com"],
-    "frame-ancestors": ["'none'"],
+    "frame-ancestors": [allowsSelfFraming(pathname) ? "'self'" : "'none'"],
     "object-src": ["'none'"],
     "img-src": ["'self'", "data:", "blob:", "https:"],
     "font-src": ["'self'", "data:", "https://fonts.gstatic.com"],
@@ -139,7 +146,7 @@ export async function middleware(request: NextRequest) {
   const requestId = resolveRequestId(request.headers.get(REQUEST_ID_HEADER));
 
   const nonce = generateNonce();
-  const csp = buildCsp(nonce);
+  const csp = buildCsp(nonce, pathname);
   // Clone the incoming headers so we can attach the nonce + CSP and have
   // them flow into the renderer. Next.js auto-stamps `<script nonce>` when
   // it sees the `x-nonce` request header.

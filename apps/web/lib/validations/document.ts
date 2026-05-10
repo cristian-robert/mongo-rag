@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod/v3";
 
 export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
 
